@@ -28,6 +28,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { mockCurrentUser } from "@/lib/mock-data";
 import { getInitials } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
 const navItems = [
   {
@@ -136,6 +137,8 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const currentUser = user || mockCurrentUser;
 
   const isActive = (href: string) => {
     return pathname === href || pathname.startsWith(href + "/");
@@ -179,7 +182,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             {group.items.map((item) => {
               if (
                 item.adminOnly &&
-                mockCurrentUser.role !== "admin"
+                currentUser.role !== "admin"
               ) {
                 return null;
               }
@@ -233,15 +236,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-[#1E293B] transition-colors cursor-pointer mb-2">
             <Avatar className="h-8 w-8 flex-shrink-0">
               <AvatarFallback className="text-xs">
-                {getInitials(mockCurrentUser.name)}
+                {getInitials(currentUser.name)}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
               <p className="text-white text-xs font-medium truncate">
-                {mockCurrentUser.name}
+                {currentUser.name}
               </p>
               <p className="text-[#64748B] text-[10px] truncate">
-                {mockCurrentUser.email}
+                {currentUser.email}
               </p>
             </div>
           </div>

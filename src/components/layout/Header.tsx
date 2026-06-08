@@ -28,6 +28,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { mockCurrentUser, mockNotifications } from "@/lib/mock-data";
+import { useAuth } from "@/context/AuthContext";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -52,6 +53,9 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
   const pathname = usePathname();
   const [notifications, setNotifications] = useState(mockNotifications);
   const [showNotifications, setShowNotifications] = useState(false);
+  const { logout, user } = useAuth();
+  
+  const currentUser = user || mockCurrentUser;
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -105,6 +109,7 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
         <div className="relative">
           <button
             id="notifications-btn"
+            type="button"
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative flex items-center justify-center h-8 w-8 rounded-lg hover:bg-muted transition-colors"
           >
@@ -176,15 +181,16 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <button
               id="user-menu-btn"
-              className="flex items-center gap-2 h-8 px-2 rounded-lg hover:bg-muted transition-colors"
+              type="button"
+              className="flex items-center gap-2 h-8 px-2 rounded-lg hover:bg-muted transition-colors cursor-pointer"
             >
               <Avatar className="h-6 w-6">
                 <AvatarFallback className="text-[10px]">
-                  {getInitials(mockCurrentUser.name)}
+                  {getInitials(currentUser.name)}
                 </AvatarFallback>
               </Avatar>
               <span className="text-xs font-medium hidden sm:block text-foreground">
-                {mockCurrentUser.name.split(" ")[0]}
+                {currentUser.name.split(" ")[0]}
               </span>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </button>
@@ -192,25 +198,26 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel>
               <div>
-                <p className="font-medium text-xs">{mockCurrentUser.name}</p>
+                <p className="font-medium text-xs">{currentUser.name}</p>
                 <p className="text-muted-foreground text-[10px] font-normal">
-                  {mockCurrentUser.email}
+                  {currentUser.email}
                 </p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem id="user-profile-menu-item">
+            <DropdownMenuItem id="user-profile-menu-item" className="cursor-pointer">
               <User className="h-4 w-4" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem id="user-settings-menu-item">
+            <DropdownMenuItem id="user-settings-menu-item" className="cursor-pointer">
               <Settings className="h-4 w-4" />
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               id="user-logout-menu-item"
-              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+              onClick={logout}
+              className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
             >
               <LogOut className="h-4 w-4" />
               Log Out
