@@ -69,6 +69,37 @@ export default function AuditLogsPage() {
     return matchSearch && matchAction && matchUser;
   });
 
+  const handleExportCSV = () => {
+    const headers = ["User", "Action", "Resource", "ResourceId", "Details", "IP Address", "Timestamp"];
+    const rows = filtered.map((log) => [
+      log.userName,
+      log.action,
+      log.resource,
+      log.resourceId,
+      log.details.replace(/"/g, '""'),
+      log.ipAddress,
+      log.timestamp
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(val => `"${val}"`).join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `audit_logs_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success("Audit logs exported successfully!", {
+      description: "CSV file saved to your Downloads folder.",
+    });
+  };
+
   const uniqueUsers = [
     ...new Map(
       mockAuditLogs.map((l) => [l.userId, { id: l.userId, name: l.userName }])
@@ -92,7 +123,7 @@ export default function AuditLogsPage() {
           variant="outline"
           size="sm"
           className="gap-2"
-          onClick={() => toast.success("Exporting audit logs to CSV...")}
+          onClick={handleExportCSV}
         >
           <Download className="h-4 w-4" />
           Export CSV

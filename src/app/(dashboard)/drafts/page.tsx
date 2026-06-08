@@ -46,7 +46,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { mockDrafts } from "@/lib/mock-data";
 import { Draft } from "@/types";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn, formatRelativeTime, downloadDraft } from "@/lib/utils";
 import { toast } from "sonner";
 
 const STATUS_OPTIONS = [
@@ -370,7 +370,12 @@ export default function DraftsPage() {
                           <Eye className="h-4 w-4" />
                           Preview
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          downloadDraft(draft);
+                          toast.success("Document exported successfully!", {
+                            description: "File saved to your Downloads folder.",
+                          });
+                        }} className="cursor-pointer">
                           <Download className="h-4 w-4" />
                           Export PDF
                         </DropdownMenuItem>

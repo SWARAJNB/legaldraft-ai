@@ -82,3 +82,43 @@ export const ROLE_COLORS = {
   lawyer: "bg-blue-50 text-blue-700 border-blue-200",
   "legal-assistant": "bg-teal-50 text-teal-700 border-teal-200",
 } as const;
+
+export function downloadDraft(
+  draft: { title: string; caseNumber: string; category: string; version: number },
+  textContent?: string
+) {
+  const content =
+    textContent ||
+    `LEGAL DRAFT DOCUMENT
+====================
+Title: ${draft.title}
+Case Number: ${draft.caseNumber}
+Category: ${draft.category.toUpperCase()}
+Version: v${draft.version}
+Date Generated: ${new Date().toLocaleDateString()}
+
+----------------------------------------------------------------------
+This is a certified legal document draft prepared using LegalDraft AI.
+
+IN THE SESSIONS COURT OF INDIA
+In the matter of: ${draft.title} (${draft.caseNumber})
+
+The applicant prays that the reliefs be granted in the interest of justice.
+----------------------------------------------------------------------
+Disclaimer: This is a generated legal draft mockup.
+`;
+
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  
+  // Format file name
+  const cleanTitle = draft.title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+  link.download = `${cleanTitle}.txt`;
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

@@ -43,7 +43,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { mockDrafts } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
+import { cn, downloadDraft } from "@/lib/utils";
 import { toast } from "sonner";
 
 const SAMPLE_CONTENT = `IN THE COURT OF SESSIONS JUDGE, MUMBAI
@@ -401,7 +401,12 @@ export default function EditorPage() {
               size="sm"
               variant="outline"
               className="h-8 gap-1 text-xs"
-              onClick={() => toast.success("Exported to PDF!")}
+              onClick={() => {
+                downloadDraft(draft, content);
+                toast.success("Document exported successfully!", {
+                  description: "File saved to your Downloads folder.",
+                });
+              }}
             >
               <Download className="h-3.5 w-3.5" />
               Export PDF
