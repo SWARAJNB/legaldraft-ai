@@ -16,3 +16,4 @@ data/
 
 # Configuration keys
 .env
+ai.env

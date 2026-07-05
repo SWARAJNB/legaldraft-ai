@@ -42,7 +42,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { mockDrafts } from "@/lib/mock-data";
+import { useDrafts } from "@/context/drafts/DraftsContext";
+import { improveTextWithAI, runAIRiskCheck } from "@/lib/api";
 import { cn, downloadDraft } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -139,11 +140,20 @@ const RISK_ITEMS = [
 ];
 
 export default function EditorPage() {
+  const { getDraft, getDraftContent, updateDraftContent } = useDrafts();
   const params = useParams();
   const draftId = params?.id as string;
-  const draft = mockDrafts.find((d) => d.id === draftId) || mockDrafts[0];
 
-  const [content, setContent] = useState(SAMPLE_CONTENT);
+  const draft = getDraft(draftId) || {
+    id: draftId,
+    title: "Bail Application — State vs. Rajan Kumar",
+    caseNumber: "CAS-2024-1042",
+    version: 3,
+    category: "criminal",
+    assignedTo: "Priya Mehta"
+  };
+
+  const [content, setContent] = useState("");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showRiskChecker, setShowRiskChecker] = useState(false);
@@ -154,6 +164,16 @@ export default function EditorPage() {
   const [activeAIAction, setActiveAIAction] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [improvedText, setImprovedText] = useState("");
+  const [risks, setRisks] = useState<{ id: string; severity: "critical" | "warning" | "info"; title: string; desc: string }[]>([]);
+  const [isCheckingRisks, setIsCheckingRisks] = useState(false);
+
+  // Load content once when component mounts or draftId changes
+  useEffect(() => {
+    if (draftId) {
+      setContent(getDraftContent(draftId));
+    }
+  }, [draftId]);
 
   useEffect(() => {
     const words = content.trim().split(/\s+/).filter(Boolean).length;
@@ -162,10 +182,14 @@ export default function EditorPage() {
 
   const autoSave = useCallback(() => {
     setSaveStatus("saving");
-    setTimeout(() => setSaveStatus("saved"), 1000);
-  }, []);
+    if (draftId && content) {
+      updateDraftContent(draftId, content);
+    }
+    setTimeout(() => setSaveStatus("saved"), 800);
+  }, [draftId, content, updateDraftContent]);
 
   useEffect(() => {
+    if (!content) return; // avoid saving initial empty load
     setSaveStatus("unsaved");
     const t = setTimeout(autoSave, 2000);
     return () => clearTimeout(t);
@@ -177,7 +201,7 @@ export default function EditorPage() {
       target.selectionStart,
       target.selectionEnd
     );
-    if (selected.length > 10) {
+    if (selected.length > 5) {
       setSelectedText(selected);
       setContextMenuPos({ x: e.clientX, y: e.clientY });
       setShowAIContextMenu(true);
@@ -186,22 +210,49 @@ export default function EditorPage() {
     }
   };
 
-  const handleAIAction = (actionId: string) => {
+  const handleAIAction = async (actionId: string) => {
+    if (!selectedText) {
+      toast.info("Please select some text first.");
+      return;
+    }
     setActiveAIAction(actionId);
     setShowAIContextMenu(false);
     setIsGeneratingAI(true);
-    setTimeout(() => {
-      setIsGeneratingAI(false);
+    try {
+      const result = await improveTextWithAI(selectedText, actionId);
+      setImprovedText(result);
       setShowDiffModal(true);
-    }, 1800);
+    } catch (error: any) {
+      toast.error("AI Action Failed", {
+        description: error.message || "Could not improve selected text.",
+      });
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleRiskCheck = async () => {
+    setIsCheckingRisks(true);
+    setShowRiskChecker(true);
+    try {
+      const results = await runAIRiskCheck(content);
+      const mapped = results.map(r => ({
+        ...r,
+        severity: (r.severity === "critical" ? "critical" : r.severity === "info" ? "info" : "warning") as "critical" | "warning" | "info"
+      }));
+      setRisks(mapped);
+    } catch (error: any) {
+      toast.error("Risk Check Failed", {
+        description: error.message || "Failed to execute AI Risk Auditor.",
+      });
+    } finally {
+      setIsCheckingRisks(false);
+    }
   };
 
   const applyDiff = () => {
-    const improved = selectedText.replace(
-      /the Applicant/g,
-      "the Honourable Applicant/Accused"
-    );
-    setContent((prev) => prev.replace(selectedText, improved));
+    if (!improvedText || !selectedText) return;
+    setContent((prev) => prev.replace(selectedText, improvedText));
     setShowDiffModal(false);
     toast.success("AI suggestion applied!");
   };
@@ -388,12 +439,12 @@ export default function EditorPage() {
               variant="outline"
               size="sm"
               className="h-8 gap-1 text-xs text-amber-700 border-amber-300 hover:bg-amber-50"
-              onClick={() => setShowRiskChecker(true)}
+              onClick={handleRiskCheck}
             >
               <Shield className="h-3.5 w-3.5" />
               Risk Check
               <span className="bg-amber-100 text-amber-700 text-[10px] px-1 rounded-full">
-                {RISK_ITEMS.length}
+                {risks.length}
               </span>
             </Button>
             <Button
@@ -586,23 +637,16 @@ export default function EditorPage() {
               <p className="text-xs font-semibold text-red-600 mb-1.5 uppercase tracking-wide">
                 Before
               </p>
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700 leading-relaxed font-mono">
-                {selectedText ||
-                  "the Applicant is a law-abiding citizen of India and has never been involved in any criminal activity prior to the alleged incident."}
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700 leading-relaxed font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                {selectedText}
               </div>
             </div>
             <div>
               <p className="text-xs font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">
                 After (AI Improved)
               </p>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-700 leading-relaxed font-mono">
-                {selectedText
-                  ? selectedText.replace(
-                      /the Applicant/g,
-                      "the Honourable Applicant/Accused"
-                    ) +
-                    " It is pertinent to note that the Applicant has maintained an impeccable record of civic conduct and social responsibility."
-                  : "the Honourable Applicant/Accused has at all material times maintained an exemplary record as a law-abiding citizen of India and has never, prior to the alleged incident, been associated with any criminal proceedings or enquiry whatsoever."}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-700 leading-relaxed font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                {improvedText}
               </div>
             </div>
           </div>
@@ -612,14 +656,10 @@ export default function EditorPage() {
               size="sm"
               id="diff-regenerate-btn"
               onClick={() => {
-                setShowDiffModal(false);
-                setTimeout(() => {
-                  setIsGeneratingAI(true);
-                  setTimeout(() => {
-                    setIsGeneratingAI(false);
-                    setShowDiffModal(true);
-                  }, 1500);
-                }, 100);
+                if (activeAIAction) {
+                  setShowDiffModal(false);
+                  handleAIAction(activeAIAction);
+                }
               }}
             >
               <RefreshCw className="h-3.5 w-3.5 mr-1" />
@@ -656,41 +696,57 @@ export default function EditorPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Found {RISK_ITEMS.length} potential issues in your document:
-            </p>
-            {RISK_ITEMS.map((item) => (
-              <div
-                key={item.id}
-                className={cn(
-                  "flex items-start gap-3 p-3 rounded-lg border",
-                  item.severity === "warning"
-                    ? "bg-amber-50 border-amber-200"
-                    : "bg-blue-50 border-blue-200"
-                )}
-              >
-                <AlertTriangle
-                  className={cn(
-                    "h-4 w-4 mt-0.5 flex-shrink-0",
-                    item.severity === "warning"
-                      ? "text-amber-500"
-                      : "text-blue-500"
-                  )}
-                />
-                <div>
-                  <p className="text-sm font-medium">{item.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {item.desc}
-                  </p>
-                </div>
+            {isCheckingRisks ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="h-8 w-8 rounded-full border-4 border-amber-600 border-t-transparent animate-spin mb-3" />
+                <p className="text-sm font-medium text-amber-700">Auditing document with OpenAI...</p>
+                <p className="text-xs text-muted-foreground mt-1">Analyzing legal gaps, boilerplate missing, or potential issues.</p>
               </div>
-            ))}
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-              <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-              <p className="text-sm text-emerald-700">
-                Party names are complete and properly formatted.
-              </p>
-            </div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Found {risks.length} potential issues in your document:
+                </p>
+                {risks.map((item) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "flex items-start gap-3 p-3 rounded-lg border",
+                      item.severity === "critical"
+                        ? "bg-red-50 border-red-200"
+                        : item.severity === "warning"
+                        ? "bg-amber-50 border-amber-200"
+                        : "bg-blue-50 border-blue-200"
+                    )}
+                  >
+                    <AlertTriangle
+                      className={cn(
+                        "h-4 w-4 mt-0.5 flex-shrink-0",
+                        item.severity === "critical"
+                          ? "text-red-500"
+                          : item.severity === "warning"
+                          ? "text-amber-500"
+                          : "text-blue-500"
+                      )}
+                    />
+                    <div>
+                      <p className="text-sm font-medium">{item.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {item.desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {risks.length === 0 && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                    <p className="text-sm text-emerald-700">
+                      No significant omissions or risks found. Document looks legally compliant and solid.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button

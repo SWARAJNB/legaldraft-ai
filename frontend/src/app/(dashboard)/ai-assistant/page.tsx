@@ -1,40 +1,35 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bot,
   User,
   Send,
   RefreshCw,
   Copy,
-  FileText,
-  ChevronRight,
   Sparkles,
-  CheckCircle2,
-  Circle,
+  FileEdit,
+  Download,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { chatWithAI, downloadGeneratedFile, generateAIDraft, GeneratedDraftFile } from "@/lib/api";
+import { useDrafts } from "@/context/drafts/DraftsContext";
+import { TemplateCategory } from "@/types";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  file?: GeneratedDraftFile;
 }
-
-const FLOW_STEPS = [
-  { id: 1, label: "Draft Type", question: "What type of legal document do you need to draft?" },
-  { id: 2, label: "Client Info", question: "Please provide the client's name and basic details." },
-  { id: 3, label: "Case Details", question: "Describe the case facts and key details." },
-  { id: 4, label: "Court/Forum", question: "Which court or forum will this be filed in?" },
-  { id: 5, label: "Relief Sought", question: "What relief or prayer is the client seeking?" },
-];
 
 const QUICK_PROMPTS = [
   "Draft a bail application for Sessions Court",
@@ -49,7 +44,7 @@ const INITIAL_MESSAGES: Message[] = [
     id: "m0",
     role: "assistant",
     content:
-      "Hello! I'm your AI Legal Draft Assistant. I'll help you create professional legal documents step by step.\n\nTo get started, tell me:\n• What type of legal document do you need?\n• Or pick a quick option below",
+      "Hello! I'm your AI Legal Draft Assistant. I can help you create professional legal documents using real-time OpenAI drafting.\n\nYou can chat with me about your case, or directly fill out the parameters on the right to generate a draft instantly!",
     timestamp: new Date(),
   },
 ];
@@ -73,13 +68,30 @@ function TypingIndicator() {
   );
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function AIAssistantPage() {
+  const router = useRouter();
+  const { createDraft } = useDrafts();
+
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [showDraft, setShowDraft] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Guided / Manual parameters
+  const [draftParams, setDraftParams] = useState({
+    draftType: "",
+    clientInfo: "",
+    caseDetails: "",
+    court: "",
+    relief: "",
+  });
+
   const [generatedDraft, setGeneratedDraft] = useState("");
+  const [generatedFile, setGeneratedFile] = useState<GeneratedDraftFile | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -90,70 +102,155 @@ export default function AIAssistantPage() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const simulateAIResponse = (userMessage: string) => {
-    setIsTyping(true);
-
-    const nextStep = currentStep + 1;
-    setCurrentStep(nextStep);
-
-    setTimeout(() => {
-      setIsTyping(false);
-      let response = "";
-
-      if (nextStep >= FLOW_STEPS.length) {
-        response =
-          "✅ I have all the information I need! I'm now generating your legal document...\n\nThis may take a moment. Click **'Generate Draft'** to proceed.";
-        setShowDraft(true);
-        setGeneratedDraft(
-          `IN THE COURT OF SESSIONS JUDGE\n\nCASE NO: ___/2024\n\nIN THE MATTER OF:\n${userMessage.includes("bail") ? "State vs. [Accused Name]" : "[Petitioner] vs. [Respondent]"}\n\nPETITION/APPLICATION FOR ${userMessage.toUpperCase()}\n\n...The document is being generated based on your inputs...\n\nPRAYER:\nIt is therefore humbly prayed that this Hon'ble Court may be pleased to grant the relief sought herein.\n\n      Respectfully submitted,\n      [Advocate Name]\n      Bar Council No: ___________`
-        );
-      } else if (nextStep < FLOW_STEPS.length) {
-        const step = FLOW_STEPS[nextStep];
-        response = `Thank you! I've noted that down.\n\n**Step ${nextStep + 1}/${FLOW_STEPS.length}: ${step.label}**\n\n${step.question}`;
-      } else {
-        response =
-          "Great! Based on what you've told me, I'll now generate your draft. One moment...";
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `m${Date.now()}`,
-          role: "assistant",
-          content: response,
-          timestamp: new Date(),
-        },
-      ]);
-    }, 1500 + Math.random() * 500);
-  };
-
-  const sendMessage = (text?: string) => {
+  const sendMessage = async (text?: string) => {
     const messageText = text || input.trim();
     if (!messageText) return;
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `m${Date.now()}`,
-        role: "user",
-        content: messageText,
-        timestamp: new Date(),
-      },
-    ]);
+    const userMsg: Message = {
+      id: `m_${Date.now()}_u`,
+      role: "user",
+      content: messageText,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    simulateAIResponse(messageText);
+    setIsTyping(true);
+
+    try {
+      // Map existing messages to API format
+      const apiMessages = messages.concat(userMsg).map((msg) => ({
+        role: msg.role as "user" | "assistant" | "system",
+        content: msg.content,
+      }));
+
+      // Call OpenAI Chat Backend
+      const aiResponse = await chatWithAI(apiMessages);
+
+      setIsTyping(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `m_${Date.now()}_a`,
+          role: "assistant",
+          content: aiResponse.response,
+          timestamp: new Date(),
+          file: aiResponse.file,
+        },
+      ]);
+
+      // Try to parse some info from the conversation if possible to pre-fill inputs
+      // We will do a simple heuristic check
+      const lowerText = messageText.toLowerCase();
+      setDraftParams((prev) => {
+        const next = { ...prev };
+        if (!next.draftType && (lowerText.includes("bail") || lowerText.includes("plaint") || lowerText.includes("petition") || lowerText.includes("agreement"))) {
+          next.draftType = messageText;
+        } else if (!next.court && (lowerText.includes("court") || lowerText.includes("forum") || lowerText.includes("tribunal"))) {
+          next.court = messageText;
+        } else if (!next.clientInfo && (lowerText.includes("client") || lowerText.includes("name is") || lowerText.includes("aged"))) {
+          next.clientInfo = messageText;
+        } else if (!next.caseDetails && (lowerText.includes("facts") || lowerText.includes("arrested") || lowerText.includes("dispute"))) {
+          next.caseDetails = messageText;
+        } else if (!next.relief && (lowerText.includes("relief") || lowerText.includes("prayer") || lowerText.includes("seeking"))) {
+          next.relief = messageText;
+        }
+        return next;
+      });
+
+    } catch (error: unknown) {
+      setIsTyping(false);
+      toast.error("Error communicating with AI Assistant", {
+        description: getErrorMessage(error, "Failed to fetch response."),
+      });
+    }
+  };
+
+  const handleGenerateDraft = async () => {
+    if (!draftParams.draftType.trim()) {
+      toast.error("Please enter a Draft Type before generating.");
+      return;
+    }
+
+    setIsGenerating(true);
+    toast.info("Generating professional legal draft using OpenAI...", { duration: 3000 });
+
+    try {
+      const draftResult = await generateAIDraft({
+        draft_type: draftParams.draftType,
+        client_info: draftParams.clientInfo,
+        case_details: draftParams.caseDetails,
+        court: draftParams.court,
+        relief: draftParams.relief,
+      });
+
+      setGeneratedDraft(draftResult.draft);
+      setGeneratedFile(draftResult.file || null);
+      toast.success(draftResult.file ? "Draft and PDF generated successfully!" : "Draft generated successfully!");
+    } catch (error: unknown) {
+      toast.error("Draft Generation Failed", {
+        description: getErrorMessage(error, "Failed to call OpenAI service."),
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSendToEditor = () => {
+    if (!generatedDraft) return;
+
+    // Determine category
+    const dt = draftParams.draftType.toLowerCase();
+    let category: TemplateCategory = "criminal";
+    if (dt.includes("property") || dt.includes("sale") || dt.includes("lease")) {
+      category = "property";
+    } else if (dt.includes("divorce") || dt.includes("marriage") || dt.includes("custody") || dt.includes("maintenance")) {
+      category = "family";
+    } else if (dt.includes("civil") || dt.includes("suit") || dt.includes("money") || dt.includes("contract")) {
+      category = "civil";
+    }
+
+    const title = draftParams.draftType || "AI Generated Legal Draft";
+    const client = draftParams.clientInfo ? draftParams.clientInfo.split(",")[0] : "AI Client";
+
+    const newDraftObj = createDraft(title, client, category, generatedDraft);
+    toast.success("Draft created and loaded in Editor!", {
+      description: "Redirecting you now...",
+    });
+    
+    router.push(`/editor/${newDraftObj.id}`);
   };
 
   const reset = () => {
     setMessages(INITIAL_MESSAGES);
-    setCurrentStep(0);
-    setShowDraft(false);
+    setDraftParams({
+      draftType: "",
+      clientInfo: "",
+      caseDetails: "",
+      court: "",
+      relief: "",
+    });
     setGeneratedDraft("");
+    setGeneratedFile(null);
   };
 
-  const progressPct = Math.round(
-    (Math.min(currentStep, FLOW_STEPS.length) / FLOW_STEPS.length) * 100
-  );
+  const handleDownloadPdf = async (file?: GeneratedDraftFile | null) => {
+    const target = file || generatedFile;
+    if (!target) return;
+
+    try {
+      await downloadGeneratedFile(target);
+      toast.success("PDF download started");
+    } catch (error: unknown) {
+      toast.error("PDF Download Failed", {
+        description: getErrorMessage(error, "Unable to download the generated PDF."),
+      });
+    }
+  };
+
+  // Calculate completion percentage based on filled fields
+  const filledFieldsCount = Object.values(draftParams).filter(Boolean).length;
+  const progressPct = Math.round((filledFieldsCount / 5) * 100);
 
   return (
     <div className="flex gap-5 h-[calc(100vh-112px)] animate-fade-in">
@@ -167,16 +264,16 @@ export default function AIAssistantPage() {
                   <Bot className="h-4 w-4 text-white" />
                 </div>
                 <div>
-                  <CardTitle className="text-sm">AI Draft Assistant</CardTitle>
+                  <CardTitle className="text-sm">AI Draft Assistant Chat</CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Powered by LegalDraft AI
+                    Discuss case details and gather facts
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="success" className="text-[10px]">
                   <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
-                  Online
+                  Live OpenAI Connected
                 </Badge>
                 <Button
                   variant="ghost"
@@ -224,6 +321,17 @@ export default function AIAssistantPage() {
                   )}
                 >
                   <div className="whitespace-pre-wrap">{msg.content}</div>
+                  {msg.file && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 gap-2 text-xs"
+                      onClick={() => handleDownloadPdf(msg.file || null)}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download PDF
+                    </Button>
+                  )}
                   <p
                     className={cn(
                       "text-[10px] mt-1.5",
@@ -244,14 +352,17 @@ export default function AIAssistantPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Prompts (only when at start) */}
+          {/* Quick Prompts */}
           {messages.length <= 1 && (
             <div className="flex-shrink-0 px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-hide">
               {QUICK_PROMPTS.map((prompt, i) => (
                 <button
                   key={i}
                   id={`quick-prompt-${i}`}
-                  onClick={() => sendMessage(prompt)}
+                  onClick={() => {
+                    setDraftParams(prev => ({ ...prev, draftType: prompt }));
+                    sendMessage(prompt);
+                  }}
                   className="flex-shrink-0 text-xs px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-colors"
                 >
                   {prompt}
@@ -260,30 +371,12 @@ export default function AIAssistantPage() {
             </div>
           )}
 
-          {/* Generate Draft button */}
-          {showDraft && (
-            <div className="flex-shrink-0 px-4 pb-3">
-              <Button
-                id="generate-draft-btn"
-                className="w-full gap-2"
-                onClick={() =>
-                  toast.success("Draft sent to editor!", {
-                    description: "Open the Document Editor to review and edit.",
-                  })
-                }
-              >
-                <Sparkles className="h-4 w-4" />
-                Send Draft to Editor
-              </Button>
-            </div>
-          )}
-
           {/* Input */}
           <div className="flex-shrink-0 p-4 border-t">
             <div className="flex gap-2">
               <Input
                 id="ai-chat-input"
-                placeholder="Type your message..."
+                placeholder="Type your message to chat with AI..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -303,107 +396,140 @@ export default function AIAssistantPage() {
                 <Send className="h-4 w-4" />
               </Button>
             </div>
-            <p className="text-[10px] text-muted-foreground/70 mt-1.5 text-center">
-              Press Enter to send · AI responses are for guidance only
-            </p>
           </div>
         </Card>
       </div>
 
-      {/* Right: Progress + Draft Panel */}
-      <div className="w-72 flex-shrink-0 space-y-4 hidden lg:block">
-        {/* Progress */}
-        <Card>
+      {/* Right: Draft Inputs + Generation Panel */}
+      <div className="w-[380px] flex-shrink-0 flex flex-col gap-4 overflow-y-auto scrollbar-thin">
+        {/* Form parameters */}
+        <Card className="flex-shrink-0">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Draft Progress</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Draft Context Parameters</CardTitle>
+              <Badge className="bg-purple-100 text-purple-700 border-none">{progressPct}% filled</Badge>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-muted-foreground">Completion</span>
-                <span className="font-semibold text-purple-700">
-                  {progressPct}%
-                </span>
-              </div>
-              <Progress value={progressPct} className="h-2" id="draft-progress-bar" />
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Draft Type *</label>
+              <Input
+                value={draftParams.draftType}
+                onChange={(e) => setDraftParams({ ...draftParams, draftType: e.target.value })}
+                placeholder="e.g., Bail Application, Civil Plaint"
+                className="h-8 text-xs"
+              />
             </div>
-            <div className="space-y-2 mt-2">
-              {FLOW_STEPS.map((step) => (
-                <div key={step.id} className="flex items-center gap-2">
-                  {step.id <= currentStep ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                  ) : step.id === currentStep + 1 ? (
-                    <Circle className="h-4 w-4 text-purple-500 flex-shrink-0" />
-                  ) : (
-                    <Circle className="h-4 w-4 text-muted-foreground/30 flex-shrink-0" />
-                  )}
-                  <span
-                    className={cn(
-                      "text-xs",
-                      step.id <= currentStep
-                        ? "text-foreground font-medium"
-                        : "text-muted-foreground"
-                    )}
-                  >
-                    {step.label}
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Client Information</label>
+              <Input
+                value={draftParams.clientInfo}
+                onChange={(e) => setDraftParams({ ...draftParams, clientInfo: e.target.value })}
+                placeholder="e.g., Rajan Kumar, Aged 34, Mumbai"
+                className="h-8 text-xs"
+              />
             </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Court/Forum</label>
+              <Input
+                value={draftParams.court}
+                onChange={(e) => setDraftParams({ ...draftParams, court: e.target.value })}
+                placeholder="e.g., Sessions Court, Mumbai"
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Case Facts & Details</label>
+              <Textarea
+                value={draftParams.caseDetails}
+                onChange={(e) => setDraftParams({ ...draftParams, caseDetails: e.target.value })}
+                placeholder="Key facts, section numbers, FIR dates..."
+                className="text-xs min-h-[60px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Relief/Prayer Sought</label>
+              <Input
+                value={draftParams.relief}
+                onChange={(e) => setDraftParams({ ...draftParams, relief: e.target.value })}
+                placeholder="e.g., Grant of regular bail"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <Button
+              id="generate-draft-btn"
+              onClick={handleGenerateDraft}
+              disabled={isGenerating || !draftParams.draftType}
+              className="w-full h-9 mt-2 gap-1.5 text-xs bg-purple-700 hover:bg-purple-800 text-white"
+            >
+              {isGenerating ? (
+                <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              {isGenerating ? "Drafting..." : "Generate AI Draft"}
+            </Button>
           </CardContent>
         </Card>
 
         {/* Generated Draft Preview */}
         {generatedDraft && (
-          <Card>
-            <CardHeader className="pb-2">
+          <Card className="flex-1 flex flex-col overflow-hidden min-h-[300px]">
+            <CardHeader className="pb-2 flex-shrink-0 border-b">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Generated Draft</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  id="copy-draft-btn"
-                  onClick={() => {
-                    navigator.clipboard.writeText(generatedDraft);
-                    toast.success("Copied to clipboard");
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
+                <CardTitle className="text-sm">AI Draft Preview</CardTitle>
+                <div className="flex gap-1">
+                  {generatedFile && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleDownloadPdf()}
+                      title="Download PDF"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedDraft);
+                      toast.success("Copied to clipboard");
+                    }}
+                    title="Copy draft"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="bg-slate-50 rounded-lg p-3 border text-[10px] font-mono text-slate-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-thin">
+            <CardContent className="p-3 flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 bg-slate-50 rounded-lg p-3 border text-[10px] font-mono text-slate-700 leading-relaxed whitespace-pre-wrap overflow-y-auto scrollbar-thin">
                 {generatedDraft}
               </div>
+              <Button
+                id="send-to-editor-btn"
+                className="w-full mt-3 gap-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
+                onClick={handleSendToEditor}
+              >
+                <FileEdit className="h-4 w-4" />
+                Open in Document Editor
+              </Button>
+              {generatedFile && (
+                <Button
+                  id="download-generated-pdf-btn"
+                  variant="outline"
+                  className="w-full mt-2 gap-2 text-xs flex-shrink-0"
+                  onClick={() => handleDownloadPdf()}
+                >
+                  <Download className="h-4 w-4" />
+                  Download PDF
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}
-
-        {/* Tips */}
-        <Card className="bg-purple-50/50 border-purple-200/50">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold text-purple-700 mb-2">
-              💡 Tips
-            </p>
-            <ul className="space-y-1.5">
-              {[
-                "Be specific about the court name",
-                "Include case section numbers",
-                "Mention all relevant dates",
-                "List all parties clearly",
-              ].map((tip, i) => (
-                <li
-                  key={i}
-                  className="text-xs text-purple-700/80 flex items-start gap-1.5"
-                >
-                  <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                  {tip}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

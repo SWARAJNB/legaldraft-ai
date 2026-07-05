@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
-import { AuthProvider } from "@/context/AuthContext";
-import { AuthGuard } from "@/components/layout/AuthGuard";
+import { AuthProvider } from "@/context/auth/AuthContext";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -32,6 +32,10 @@ export const metadata: Metadata = {
   },
 };
 
+import { DraftsProvider } from "@/context/drafts/DraftsContext";
+import { CasesProvider } from "@/context/cases/CasesContext";
+import { ThemeProvider } from "@/context/theme/ThemeContext";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,11 +44,17 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
-        <AuthProvider>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AuthGuard>
+              <DraftsProvider>
+                <CasesProvider>
+                  {children}
+                </CasesProvider>
+              </DraftsProvider>
+            </AuthGuard>
+          </AuthProvider>
+        </ThemeProvider>
         <Toaster
           position="bottom-right"
           expand={false}

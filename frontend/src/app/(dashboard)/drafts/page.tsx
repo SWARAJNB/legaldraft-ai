@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -44,7 +44,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { mockDrafts } from "@/lib/mock-data";
+import { useDrafts } from "@/context/drafts/DraftsContext";
 import { Draft } from "@/types";
 import { cn, formatRelativeTime, downloadDraft } from "@/lib/utils";
 import { toast } from "sonner";
@@ -96,6 +96,7 @@ function CategoryBadge({ category }: { category: Draft["category"] }) {
 }
 
 export default function DraftsPage() {
+  const { drafts, createDraft, deleteDraft } = useDrafts();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -107,7 +108,17 @@ export default function DraftsPage() {
     category: "criminal",
   });
 
-  const filtered = mockDrafts.filter((d) => {
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("create") === "true") {
+        setShowCreateModal(true);
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+  }, []);
+
+  const filtered = drafts.filter((d) => {
     const matchSearch =
       d.title.toLowerCase().includes(search.toLowerCase()) ||
       d.clientName.toLowerCase().includes(search.toLowerCase()) ||
@@ -134,18 +145,25 @@ export default function DraftsPage() {
   };
 
   const handleCreate = () => {
+    const created = createDraft(newDraft.title, newDraft.clientName, newDraft.category as any);
     toast.success("Draft created successfully!", {
-      description: newDraft.title || "New draft",
+      description: created.title || "New draft",
     });
     setShowCreateModal(false);
     setNewDraft({ title: "", clientName: "", category: "criminal" });
   };
 
+  const handleDelete = (id: string) => {
+    deleteDraft(id);
+    setSelectedDrafts((prev) => prev.filter((x) => x !== id));
+    toast.success("Draft deleted successfully!");
+  };
+
   const statusCounts = {
-    all: mockDrafts.length,
-    "in-progress": mockDrafts.filter((d) => d.status === "in-progress").length,
-    review: mockDrafts.filter((d) => d.status === "review").length,
-    finalized: mockDrafts.filter((d) => d.status === "finalized").length,
+    all: drafts.length,
+    "in-progress": drafts.filter((d) => d.status === "in-progress").length,
+    review: drafts.filter((d) => d.status === "review").length,
+    finalized: drafts.filter((d) => d.status === "finalized").length,
   };
 
   return (
@@ -157,7 +175,7 @@ export default function DraftsPage() {
             All Drafts
           </h2>
           <p className="text-sm text-muted-foreground">
-            {mockDrafts.length} total drafts across all categories
+            {drafts.length} total drafts across all categories
           </p>
         </div>
         <Button
@@ -384,7 +402,7 @@ export default function DraftsPage() {
                           <Archive className="h-4 w-4" />
                           Archive
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                        <DropdownMenuItem onClick={() => handleDelete(draft.id)} className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer">
                           <Trash2 className="h-4 w-4" />
                           Delete
                         </DropdownMenuItem>
@@ -412,7 +430,7 @@ export default function DraftsPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between px-4 py-3 border-t">
           <p className="text-xs text-muted-foreground">
-            Showing {filtered.length} of {mockDrafts.length} drafts
+            Showing {filtered.length} of {drafts.length} drafts
           </p>
           <div className="flex gap-1">
             {["1", "2", "3"].map((page) => (

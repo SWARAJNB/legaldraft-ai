@@ -1,90 +1,12 @@
-// Types for LegalDraft AI
+// ── Barrel re-export ────────────────────────────────────────────────────────
+// Re-exports all types so existing `@/types` imports continue to work.
 
-export type UserRole = "admin" | "lawyer" | "legal-assistant";
+export * from "./auth";
+export * from "./templates";
+export * from "./drafts";
+export * from "./cases";
 
-export type DraftStatus =
-  | "draft"
-  | "in-progress"
-  | "review"
-  | "finalized"
-  | "archived";
-
-export type CaseStatus = "active" | "pending" | "closed";
-
-export type TemplateCategory = "criminal" | "civil" | "property" | "family";
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  avatar?: string;
-  isActive: boolean;
-  firm: string;
-  createdAt: string;
-  lastActive: string;
-}
-
-export interface Draft {
-  id: string;
-  title: string;
-  caseNumber: string;
-  clientName: string;
-  status: DraftStatus;
-  category: TemplateCategory;
-  assignedTo: string;
-  createdAt: string;
-  updatedAt: string;
-  wordCount: number;
-  version: number;
-  tags: string[];
-}
-
-export interface Template {
-  id: string;
-  name: string;
-  description: string;
-  category: TemplateCategory;
-  fields: number;
-  usageCount: number;
-  lastUsed: string;
-  previewText: string;
-  tags: string[];
-  isFeatured: boolean;
-}
-
-export interface Case {
-  id: string;
-  caseNumber: string;
-  clientName: string;
-  clientEmail: string;
-  status: CaseStatus;
-  category: TemplateCategory;
-  assignedLawyer: string;
-  court: string;
-  filingDate: string;
-  nextHearing: string;
-  relatedDrafts: string[];
-  description: string;
-  timeline: TimelineEvent[];
-}
-
-export interface TimelineEvent {
-  id: string;
-  date: string;
-  title: string;
-  description: string;
-  type: "filing" | "hearing" | "draft" | "order" | "appeal" | "milestone";
-}
-
-export interface Clause {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  tags: string[];
-  usageCount: number;
-}
+// ── Shared / cross-cutting types ────────────────────────────────────────────
 
 export interface AuditLog {
   id: string;
@@ -122,28 +44,10 @@ export interface AnalyticsData {
   templates: number;
 }
 
-export interface DraftTrend {
-  month: string;
-  criminal: number;
-  civil: number;
-  property: number;
-  family: number;
-}
-
 export interface RiskItem {
   id: string;
   severity: "critical" | "warning" | "info";
   title: string;
   description: string;
   field: string;
-}
-
-export interface ExtractedCaseData {
-  caseNumber?: string;
-  parties?: string[];
-  dates?: string[];
-  legalSections?: string[];
-  facts?: string[];
-  court?: string;
-  filingDate?: string;
 }

@@ -1,0 +1,12 @@
+import { Controller, Get } from '@nestjs/common';
+
+@Controller()
+export class HealthController {
+  @Get('health')
+  healthCheck() {
+    return {
+      status: 'healthy',
+      service: 'legaldraft-storage-backend',
+    };
+  }
+}

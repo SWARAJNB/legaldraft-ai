@@ -11,6 +11,7 @@
 /backend/metadata.db
 /backend/*.db
 /backend/.env
+/backend/ai.env
 
 # Local runtime data folders
 /data/

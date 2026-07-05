@@ -22,15 +22,29 @@ import {
   Sparkles,
   LogOut,
   HelpCircle,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { mockCurrentUser } from "@/lib/mock-data";
 import { getInitials } from "@/lib/utils";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/auth/AuthContext";
+import { useDrafts } from "@/context/drafts/DraftsContext";
+import { useTheme } from "@/context/theme/ThemeContext";
 
-const navItems = [
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ForwardRefExoticComponent<Omit<React.SVGProps<SVGSVGElement>, "ref"> & React.RefAttributes<SVGSVGElement>>;
+  id: string;
+  badge?: string;
+  adminOnly?: boolean;
+  isNew?: boolean;
+}
+
+const navItems: { group: string; items: NavItem[] }[] = [
   {
     group: "Main",
     items: [
@@ -138,6 +152,8 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { drafts } = useDrafts();
+  const { theme, toggleTheme } = useTheme();
   const currentUser = user || mockCurrentUser;
 
   const isActive = (href: string) => {
@@ -212,9 +228,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   {!collapsed && (
                     <span className="truncate flex-1">{item.label}</span>
                   )}
-                  {!collapsed && item.badge && (
+                  {!collapsed && (item.badge || item.id === "nav-drafts") && (
                     <span className="bg-purple-700/30 text-purple-300 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
-                      {item.badge}
+                      {item.id === "nav-drafts" ? drafts.length : item.badge}
                     </span>
                   )}
                   {!collapsed && item.isNew && (
@@ -250,10 +266,30 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </div>
         )}
 
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          id="theme-toggle"
+          className="flex items-center gap-3 w-full px-3 py-2 text-[#94A3B8] hover:text-white hover:bg-[#1E293B] rounded-lg transition-all duration-150 mb-2 cursor-pointer"
+          title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+        >
+          {theme === "light" ? (
+            <div className="flex items-center gap-3 justify-center w-full md:justify-start">
+              <Moon className="h-4 w-4 text-[#64748B] flex-shrink-0" />
+              {!collapsed && <span className="text-xs">Dark Mode</span>}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 justify-center w-full md:justify-start">
+              <Sun className="h-4 w-4 text-amber-500 flex-shrink-0" />
+              {!collapsed && <span className="text-xs">Light Mode</span>}
+            </div>
+          )}
+        </button>
+
         <button
           onClick={onToggle}
           id="sidebar-toggle"
-          className="flex items-center justify-center w-full py-2 text-[#475569] hover:text-white hover:bg-[#1E293B] rounded-lg transition-all duration-150"
+          className="flex items-center justify-center w-full py-2 text-[#475569] hover:text-white hover:bg-[#1E293B] rounded-lg transition-all duration-150 cursor-pointer"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? (

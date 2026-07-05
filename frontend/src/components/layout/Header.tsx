@@ -28,7 +28,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { mockCurrentUser, mockNotifications } from "@/lib/mock-data";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/auth/AuthContext";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -78,7 +78,7 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
   return (
     <header
       className={cn(
-        "fixed top-0 right-0 z-30 h-16 bg-white/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 transition-all duration-300",
+        "fixed top-0 right-0 z-30 h-16 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 transition-all duration-300",
         sidebarCollapsed ? "left-[68px]" : "left-[240px]"
       )}
     >
@@ -123,7 +123,7 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
 
           {/* Notification Panel */}
           {showNotifications && (
-            <div className="absolute right-0 top-10 w-80 bg-white rounded-xl border border-border shadow-xl z-50 overflow-hidden animate-fade-in">
+            <div className="absolute right-0 top-10 w-80 bg-card rounded-xl border border-border shadow-xl z-50 overflow-hidden animate-fade-in">
               <div className="flex items-center justify-between px-4 py-3 border-b">
                 <span className="text-sm font-semibold">Notifications</span>
                 <button

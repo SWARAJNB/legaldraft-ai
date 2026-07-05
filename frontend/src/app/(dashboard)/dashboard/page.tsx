@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import {
   FileText,
   TrendingUp,
@@ -45,6 +46,10 @@ import {
   mockAnalytics,
   mockDraftTrends,
 } from "@/lib/mock-data";
+import { useDrafts } from "@/context/drafts/DraftsContext";
+import { useAuth } from "@/context/auth/AuthContext";
+import { WS_BASE_URL } from "@/lib/api";
+import { toast } from "sonner";
 import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
 
 const StatCard = ({
@@ -64,36 +69,44 @@ const StatCard = ({
   color: string;
   id: string;
 }) => (
-  <Card
-    id={id}
-    className="relative overflow-hidden hover:shadow-md transition-shadow duration-200"
+  <motion.div
+    whileHover={{ y: -4, scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+    className="w-full"
   >
-    <CardContent className="p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground font-medium">{title}</p>
-          <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
-          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-          {trend && (
-            <div className="flex items-center gap-1 mt-2">
-              <TrendingUp className="h-3 w-3 text-emerald-500" />
-              <span className="text-xs text-emerald-600 font-medium">
-                {trend}
-              </span>
-            </div>
-          )}
+    <Card
+      id={id}
+      className="relative overflow-hidden hover:shadow-lg transition-all duration-300 border-border bg-card text-foreground cursor-pointer"
+    >
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground font-medium">{title}</p>
+            <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
+            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+            {trend && (
+              <div className="flex items-center gap-1 mt-2">
+                <TrendingUp className="h-3 w-3 text-emerald-500" />
+                <span className="text-xs text-emerald-600 font-medium">
+                  {trend}
+                </span>
+              </div>
+            )}
+          </div>
+          <motion.div
+            whileHover={{ rotate: 15, scale: 1.1 }}
+            className={cn(
+              "h-10 w-10 rounded-xl flex items-center justify-center shadow-md shadow-black/10",
+              color
+            )}
+          >
+            <Icon className="h-5 w-5 text-white" />
+          </motion.div>
         </div>
-        <div
-          className={cn(
-            "h-10 w-10 rounded-xl flex items-center justify-center",
-            color
-          )}
-        >
-          <Icon className="h-5 w-5 text-white" />
-        </div>
-      </div>
-    </CardContent>
-  </Card>
+      </CardContent>
+    </Card>
+  </motion.div>
 );
 
 const activityTypeConfig = {
@@ -112,6 +125,76 @@ const CHART_COLORS = {
 };
 
 export default function DashboardPage() {
+  const { drafts } = useDrafts();
+  const { user } = useAuth();
+  const [activities, setActivities] = useState(recentActivity);
+  const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
+
+  const totalDraftsCount = drafts.length;
+  const inProgressCount = drafts.filter((d) => d.status === "in-progress").length;
+  const finalizedCount = drafts.filter((d) => d.status === "finalized").length;
+
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+
+    const connectWS = () => {
+      setWsStatus("connecting");
+      try {
+        socket = new WebSocket(`${WS_BASE_URL}/ws`);
+
+        socket.onopen = () => {
+          setWsStatus("connected");
+          console.log("WebSocket connection established");
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "activity" && data.data) {
+              setActivities((prev) => {
+                // Check if activity already exists
+                if (prev.some((act) => act.id === data.data.id)) return prev;
+                // Prepend new activity and slice to keep recent items
+                return [data.data, ...prev].slice(0, 7);
+              });
+              toast.info(`Activity Update: ${data.data.user} ${data.data.action} ${data.data.resource}`);
+            }
+          } catch (err) {
+            console.error("Error parsing WebSocket message:", err);
+          }
+        };
+
+        socket.onclose = () => {
+          setWsStatus("disconnected");
+          console.log("WebSocket connection closed. Reconnecting in 5s...");
+          reconnectTimeout = setTimeout(connectWS, 5000);
+        };
+
+        socket.onerror = (err) => {
+          console.error("WebSocket error:", err);
+          socket?.close();
+        };
+      } catch (err) {
+        console.error("Error setting up WebSocket:", err);
+        setWsStatus("disconnected");
+        reconnectTimeout = setTimeout(connectWS, 5000);
+      }
+    };
+
+    connectWS();
+
+    return () => {
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
+  }, []);
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Welcome Banner */}
@@ -124,33 +207,47 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h2 className="text-2xl font-bold">
-                Good morning, Rajesh! 👋
+                Good morning, {user?.name ? user.name.split(" ")[0] : "User"}! 👋
               </h2>
               <p className="text-purple-200 mt-1 text-sm">
                 You have{" "}
-                <span className="text-white font-semibold">23 drafts</span> in
+                <span className="text-white font-semibold">{inProgressCount} drafts</span> in
                 progress and{" "}
                 <span className="text-white font-semibold">3 hearings</span>{" "}
                 this week.
               </p>
             </div>
             <div className="flex gap-3">
-              <Button
-                id="dashboard-new-draft-btn"
-                size="sm"
-                className="bg-white/20 hover:bg-white/30 border border-white/20 text-white backdrop-blur-sm"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                New Draft
-              </Button>
-              <Button
-                id="dashboard-ai-btn"
-                size="sm"
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-              >
-                <Bot className="h-4 w-4 mr-1" />
-                AI Assistant
-              </Button>
+              <Link href="/drafts?create=true">
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button
+                    id="dashboard-new-draft-btn"
+                    size="sm"
+                    className="bg-white/20 hover:bg-white/30 border border-white/20 text-white backdrop-blur-sm cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    New Draft
+                  </Button>
+                </motion.div>
+              </Link>
+              <Link href="/ai-assistant">
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button
+                    id="dashboard-ai-btn"
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
+                  >
+                    <Bot className="h-4 w-4 mr-1" />
+                    AI Assistant
+                  </Button>
+                </motion.div>
+              </Link>
             </div>
           </div>
 
@@ -159,7 +256,7 @@ export default function DashboardPage() {
             {[
               {
                 label: "Total Drafts",
-                value: dashboardStats.totalDrafts,
+                value: totalDraftsCount,
                 icon: "📄",
               },
               {
@@ -196,7 +293,7 @@ export default function DashboardPage() {
         <StatCard
           id="stat-total-drafts"
           title="Total Drafts"
-          value={dashboardStats.totalDrafts}
+          value={totalDraftsCount}
           subtitle="All time"
           icon={FileText}
           trend="+12% from last month"
@@ -205,7 +302,7 @@ export default function DashboardPage() {
         <StatCard
           id="stat-in-progress"
           title="In Progress"
-          value={dashboardStats.inProgress}
+          value={inProgressCount}
           subtitle="Active drafts"
           icon={Clock}
           color="bg-blue-600"
@@ -213,7 +310,7 @@ export default function DashboardPage() {
         <StatCard
           id="stat-finalized"
           title="Finalized"
-          value={dashboardStats.finalized}
+          value={finalizedCount}
           subtitle="Ready to export"
           icon={CheckCircle2}
           trend="+5 this week"
@@ -409,7 +506,7 @@ export default function DashboardPage() {
       {/* Quick Actions + Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Quick Actions */}
-        <Card>
+        <Card className="border-border bg-card text-foreground">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Quick Actions</CardTitle>
           </CardHeader>
@@ -420,7 +517,7 @@ export default function DashboardPage() {
                 label: "Create New Draft",
                 desc: "Start from scratch or template",
                 icon: Plus,
-                color: "bg-purple-50 text-purple-700",
+                color: "bg-purple-50 text-purple-700 dark:bg-purple-950/25 dark:text-purple-400",
                 href: "/drafts",
               },
               {
@@ -428,7 +525,7 @@ export default function DashboardPage() {
                 label: "AI Draft Assistant",
                 desc: "Generate with AI guidance",
                 icon: Bot,
-                color: "bg-blue-50 text-blue-700",
+                color: "bg-blue-50 text-blue-700 dark:bg-blue-950/25 dark:text-blue-400",
                 href: "/ai-assistant",
               },
               {
@@ -436,7 +533,7 @@ export default function DashboardPage() {
                 label: "Analyze Document",
                 desc: "Extract case data from FIR/PDF",
                 icon: Upload,
-                color: "bg-orange-50 text-orange-700",
+                color: "bg-orange-50 text-orange-700 dark:bg-orange-950/25 dark:text-orange-400",
                 href: "/case-analyzer",
               },
               {
@@ -444,18 +541,21 @@ export default function DashboardPage() {
                 label: "Legal Research",
                 desc: "Ask legal questions with AI",
                 icon: Search,
-                color: "bg-emerald-50 text-emerald-700",
+                color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-400",
                 href: "/legal-research",
               },
             ].map((action) => (
               <Link key={action.id} href={action.href}>
-                <div
+                <motion.div
                   id={action.id}
-                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group"
+                  whileHover={{ x: 6, scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group border border-transparent hover:border-border"
                 >
                   <div
                     className={cn(
-                      "h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0",
+                      "h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm",
                       action.color
                     )}
                   >
@@ -469,8 +569,8 @@ export default function DashboardPage() {
                       {action.desc}
                     </p>
                   </div>
-                  <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
+                  <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all opacity-50 group-hover:opacity-100" />
+                </motion.div>
               </Link>
             ))}
           </CardContent>
@@ -480,7 +580,24 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Recent Activity</CardTitle>
+              <div className="flex items-center gap-2.5">
+                <CardTitle className="text-base">Recent Activity</CardTitle>
+                <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className={cn(
+                      "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                      wsStatus === "connected" ? "bg-emerald-400" : wsStatus === "connecting" ? "bg-amber-400" : "bg-red-400"
+                    )}></span>
+                    <span className={cn(
+                      "relative inline-flex rounded-full h-1.5 w-1.5",
+                      wsStatus === "connected" ? "bg-emerald-500" : wsStatus === "connecting" ? "bg-amber-500" : "bg-red-500"
+                    )}></span>
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">
+                    {wsStatus === "connected" ? "Syncing Live" : wsStatus === "connecting" ? "Connecting..." : "Offline"}
+                  </span>
+                </div>
+              </div>
               <Link href="/audit-logs">
                 <Button variant="ghost" size="sm" className="text-xs h-7">
                   View all
@@ -491,7 +608,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3" id="recent-activity-list">
-              {recentActivity.map((activity) => {
+              {activities.map((activity) => {
                 const config =
                   activityTypeConfig[
                     activity.type as keyof typeof activityTypeConfig
@@ -546,22 +663,25 @@ export default function DashboardPage() {
             id: "progress-drafts",
             label: "Draft Completion Rate",
             value: 63,
-            color: "text-purple-700",
+            color: "text-purple-700 dark:text-purple-400",
+            bg: "bg-purple-700 dark:bg-purple-500",
           },
           {
             id: "progress-cases",
             label: "Case Resolution Rate",
             value: 58,
-            color: "text-blue-600",
+            color: "text-blue-600 dark:text-blue-400",
+            bg: "bg-blue-600 dark:bg-blue-500",
           },
           {
             id: "progress-exports",
             label: "Monthly Export Target",
             value: 78,
-            color: "text-emerald-600",
+            color: "text-emerald-600 dark:text-emerald-400",
+            bg: "bg-emerald-600 dark:bg-emerald-500",
           },
         ].map((item) => (
-          <Card key={item.id}>
+          <Card key={item.id} className="border-border bg-card text-foreground">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-muted-foreground">
@@ -571,7 +691,14 @@ export default function DashboardPage() {
                   {item.value}%
                 </span>
               </div>
-              <Progress value={item.value} className="h-1.5" id={item.id} />
+              <div className="w-full bg-muted dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${item.value}%` }}
+                  transition={{ duration: 1.5, ease: "easeOut" }}
+                  className={cn("h-full rounded-full", item.bg)}
+                />
+              </div>
             </CardContent>
           </Card>
         ))}

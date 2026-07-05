@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { registerUser } from "@/lib/api";
 
 const STEPS = [
   { id: 1, label: "Firm Info", icon: Building },
@@ -82,12 +83,23 @@ export default function RegisterPage() {
       return;
     }
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 2000));
-    setIsLoading(false);
-    toast.success("Account created successfully!", {
-      description: "Welcome to LegalDraft AI. Please log in.",
-    });
-    router.push("/login");
+    try {
+      await registerUser({
+        full_name: form.name,
+        email: form.email,
+        password: form.password,
+        role: form.role,
+      });
+      toast.success("Account created successfully!", {
+        description: "Welcome to LegalDraft AI. Please log in.",
+      });
+      router.push("/login");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Registration failed. Please try again.";
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -241,7 +253,7 @@ export default function RegisterPage() {
                 <Label className="text-slate-300 text-sm">Full Name</Label>
                 <Input
                   id="user-name"
-                  placeholder="Rajesh Sharma"
+                  placeholder="Name"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="bg-white/5 border-white/10 text-white placeholder:text-slate-500"
@@ -252,7 +264,7 @@ export default function RegisterPage() {
                 <Input
                   id="user-email"
                   type="email"
-                  placeholder="rajesh@lexfirm.in"
+                  placeholder="abc@Gmail.com"
                   value={form.email}
                   onChange={(e) =>
                     setForm({ ...form, email: e.target.value })

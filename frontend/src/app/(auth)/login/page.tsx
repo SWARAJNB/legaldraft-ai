@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/auth/AuthContext";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,9 +37,10 @@ export default function LoginPage() {
     if (!validate()) return;
     try {
       setIsLoading(true);
-      await login(form.email);
+      await login(form.email, form.password);
     } catch (err) {
-      toast.error("Failed to sign in. Please check your credentials.");
+      const message = err instanceof Error ? err.message : "Failed to sign in. Please check your credentials.";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +70,7 @@ export default function LoginPage() {
             <Input
               id="login-email"
               type="email"
-              placeholder="rajesh@lexfirm.in"
+              placeholder="abc@Gmail.com"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               className={cn(
