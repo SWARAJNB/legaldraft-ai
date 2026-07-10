@@ -18,6 +18,9 @@ const swagger_1 = require("@nestjs/swagger");
 const drafts_service_1 = require("./drafts.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const auth_decorators_1 = require("../auth/decorators/auth.decorators");
+const permissions_guard_1 = require("../auth/rbac/permissions.guard");
+const permission_decorator_1 = require("../auth/rbac/permission.decorator");
+const permissions_1 = require("../auth/rbac/permissions");
 let DraftsController = class DraftsController {
     constructor(draftsService) {
         this.draftsService = draftsService;
@@ -85,7 +88,8 @@ __decorate([
 exports.DraftsController = DraftsController = __decorate([
     (0, swagger_1.ApiTags)('Drafts'),
     (0, common_1.Controller)('drafts'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permission_decorator_1.RequirePermission)(permissions_1.Permission.DRAFT),
     (0, swagger_1.ApiBearerAuth)(),
     __metadata("design:paramtypes", [drafts_service_1.DraftsService])
 ], DraftsController);

@@ -4,6 +4,7 @@ import {
   ChatOptions,
 } from './interfaces/ai-provider.interface';
 import { GeminiProvider } from './providers/gemini.provider';
+import { RagService, RagCitation } from '../rag/rag.service';
 
 const LEGAL_SYSTEM_PROMPT = `You are an expert Indian Legal Draft AI Assistant specializing in creating professional legal documents under Indian law.
 
@@ -27,6 +28,8 @@ export class AiService implements OnModuleInit {
   private readonly logger = new Logger(AiService.name);
   private provider: GeminiProvider;
 
+  constructor(private readonly ragService: RagService) {}
+
   onModuleInit() {
     this.provider = new GeminiProvider();
     this.logger.log('Gemini AI Provider initialized as sole provider.');
@@ -47,6 +50,31 @@ export class AiService implements OnModuleInit {
 
     const response = await this.provider.chat(messages);
     return { response };
+  }
+
+  async answerWithKnowledge(params: {
+    question: string;
+    tenantId: string;
+    workspaceId?: string;
+    caseId?: string;
+  }): Promise<{ response: string; citations: RagCitation[] }> {
+    const { prompt, citations } = await this.ragService.buildPrompt({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      caseId: params.caseId,
+      question: params.question,
+      topK: 8,
+    });
+
+    const response = await this.provider.chat(
+      [
+        { role: 'system', content: LEGAL_SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
+      { temperature: 0.2 },
+    );
+
+    return { response, citations };
   }
 
   async *chatStream(

@@ -13,10 +13,14 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { DraftsService } from './drafts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/auth.decorators';
+import { PermissionsGuard } from '../auth/rbac/permissions.guard';
+import { RequirePermission } from '../auth/rbac/permission.decorator';
+import { Permission } from '../auth/rbac/permissions';
 
 @ApiTags('Drafts')
 @Controller('drafts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission(Permission.DRAFT)
 @ApiBearerAuth()
 export class DraftsController {
   constructor(private readonly draftsService: DraftsService) {}

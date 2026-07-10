@@ -8,12 +8,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RagModule = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("@nestjs/typeorm");
+const file_entity_1 = require("../files/entities/file.entity");
+const file_intelligence_entity_1 = require("../files/entities/file-intelligence.entity");
+const rag_controller_1 = require("./rag.controller");
 const rag_service_1 = require("./rag.service");
 let RagModule = class RagModule {
 };
 exports.RagModule = RagModule;
 exports.RagModule = RagModule = __decorate([
     (0, common_1.Module)({
+        imports: [typeorm_1.TypeOrmModule.forFeature([file_entity_1.FileEntity, file_intelligence_entity_1.FileIntelligenceEntity])],
+        controllers: [rag_controller_1.RagController],
         providers: [rag_service_1.RagService],
         exports: [rag_service_1.RagService],
     })

@@ -24,6 +24,7 @@ import {
   HelpCircle,
   Sun,
   Moon,
+  Building,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -73,6 +74,12 @@ const navItems: { group: string; items: NavItem[] }[] = [
         icon: Briefcase,
         id: "nav-cases",
       },
+      {
+        label: "Clients",
+        href: "/clients",
+        icon: Users,
+        id: "nav-clients",
+      },
     ],
   },
   {
@@ -90,6 +97,13 @@ const navItems: { group: string; items: NavItem[] }[] = [
         href: "/case-analyzer",
         icon: Sparkles,
         id: "nav-case-analyzer",
+        isNew: true,
+      },
+      {
+        label: "Knowledge Base",
+        href: "/knowledge-base",
+        icon: Library,
+        id: "nav-knowledge-base",
         isNew: true,
       },
       {
@@ -133,6 +147,12 @@ const navItems: { group: string; items: NavItem[] }[] = [
         icon: Users,
         id: "nav-users",
         adminOnly: true,
+      },
+      {
+        label: "Workspaces",
+        href: "/workspaces",
+        icon: Building,
+        id: "nav-workspaces",
       },
       {
         label: "Settings",

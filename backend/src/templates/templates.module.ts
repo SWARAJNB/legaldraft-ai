@@ -1,19 +1,18 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TemplatesController } from './templates.controller';
 import { TemplatesService } from './templates.service';
 import { Template } from './entities/template.entity';
+import { TemplateVersion } from './entities/template-version.entity';
+import { FilesModule } from '../files/files.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Template])],
+  imports: [
+    TypeOrmModule.forFeature([Template, TemplateVersion]),
+    FilesModule,
+  ],
   controllers: [TemplatesController],
   providers: [TemplatesService],
   exports: [TemplatesService],
 })
-export class TemplatesModule implements OnModuleInit {
-  constructor(private readonly templatesService: TemplatesService) {}
-
-  async onModuleInit() {
-    await this.templatesService.seedSystemTemplates();
-  }
-}
+export class TemplatesModule {}

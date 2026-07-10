@@ -5,11 +5,15 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 var AiService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AiService = void 0;
 const common_1 = require("@nestjs/common");
 const gemini_provider_1 = require("./providers/gemini.provider");
+const rag_service_1 = require("../rag/rag.service");
 const LEGAL_SYSTEM_PROMPT = `You are an expert Indian Legal Draft AI Assistant specializing in creating professional legal documents under Indian law.
 
 Your core expertise includes:
@@ -27,7 +31,8 @@ Rules:
 6. If asked to improve text, maintain legal formality and add appropriate citations.
 7. Never provide legal advice — clarify that documents are drafts for review by a licensed advocate.`;
 let AiService = AiService_1 = class AiService {
-    constructor() {
+    constructor(ragService) {
+        this.ragService = ragService;
         this.logger = new common_1.Logger(AiService_1.name);
     }
     onModuleInit() {
@@ -44,6 +49,20 @@ let AiService = AiService_1 = class AiService {
         ];
         const response = await this.provider.chat(messages);
         return { response };
+    }
+    async answerWithKnowledge(params) {
+        const { prompt, citations } = await this.ragService.buildPrompt({
+            tenantId: params.tenantId,
+            workspaceId: params.workspaceId,
+            caseId: params.caseId,
+            question: params.question,
+            topK: 8,
+        });
+        const response = await this.provider.chat([
+            { role: 'system', content: LEGAL_SYSTEM_PROMPT },
+            { role: 'user', content: prompt },
+        ], { temperature: 0.2 });
+        return { response, citations };
     }
     async *chatStream(userMessages) {
         const messages = [
@@ -156,6 +175,7 @@ Return ONLY the improved text, nothing else.`;
 };
 exports.AiService = AiService;
 exports.AiService = AiService = AiService_1 = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [rag_service_1.RagService])
 ], AiService);
 //# sourceMappingURL=ai.service.js.map

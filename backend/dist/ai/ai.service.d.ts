@@ -1,7 +1,10 @@
 import { OnModuleInit } from '@nestjs/common';
+import { RagService, RagCitation } from '../rag/rag.service';
 export declare class AiService implements OnModuleInit {
+    private readonly ragService;
     private readonly logger;
     private provider;
+    constructor(ragService: RagService);
     onModuleInit(): void;
     chat(userMessages: {
         role: string;
@@ -9,6 +12,15 @@ export declare class AiService implements OnModuleInit {
     }[]): Promise<{
         response: string;
         file?: any;
+    }>;
+    answerWithKnowledge(params: {
+        question: string;
+        tenantId: string;
+        workspaceId?: string;
+        caseId?: string;
+    }): Promise<{
+        response: string;
+        citations: RagCitation[];
     }>;
     chatStream(userMessages: {
         role: string;

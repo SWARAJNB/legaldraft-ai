@@ -19,13 +19,24 @@ import { Response } from 'express';
 import { FilesService } from './files.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/auth.decorators';
+import { PermissionsGuard } from '../auth/rbac/permissions.guard';
+import { RequirePermission } from '../auth/rbac/permission.decorator';
+import { Permission } from '../auth/rbac/permissions';
 
 @ApiTags('Files')
 @Controller('files')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission(Permission.DOCUMENT)
 @ApiBearerAuth()
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'List all uploaded files' })
+  findAll(@Headers('x-tenant-id') tenantId: string) {
+    if (!tenantId) throw new BadRequestException('Missing X-Tenant-ID header.');
+    return this.filesService.findByTenant(tenantId);
+  }
 
   @Post('upload')
   @ApiOperation({ summary: 'Upload a file to tenant storage' })
@@ -36,6 +47,10 @@ export class FilesController {
     @Headers('x-tenant-id') tenantId: string,
     @CurrentUser() user: { id: string },
     @Body('category') category: string,
+    @Body('workspace_id') workspaceId?: string,
+    @Body('client_id') clientId?: string,
+    @Body('case_id') caseId?: string,
+    @Body('conversation_id') conversationId?: string,
   ) {
     if (!file) throw new BadRequestException('No file provided.');
     if (!tenantId) throw new BadRequestException('Missing X-Tenant-ID header.');
@@ -48,6 +63,10 @@ export class FilesController {
       file.buffer,
       file.mimetype,
       user.id,
+      workspaceId,
+      clientId,
+      caseId,
+      conversationId,
     );
   }
 
@@ -55,6 +74,12 @@ export class FilesController {
   @ApiOperation({ summary: 'Get file metadata by ID' })
   findById(@Param('id') id: string) {
     return this.filesService.findById(id);
+  }
+
+  @Get(':id/intelligence')
+  @ApiOperation({ summary: 'Get file AI intelligence details' })
+  getIntelligence(@Param('id') id: string) {
+    return this.filesService.getIntelligence(id);
   }
 
   @Delete(':id')

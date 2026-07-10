@@ -140,3 +140,82 @@ export async function improveTextWithAI(text: string, action: string): Promise<s
   const data = await response.json();
   return data.improved_text;
 }
+
+export interface DBConversation {
+  id: string;
+  title: string;
+  messages: { role: string; content: string; timestamp: string }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchConversations(): Promise<DBConversation[]> {
+  const response = await authFetch(`${API_BASE_URL}/ai/conversations`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to fetch conversations");
+  }
+  return response.json();
+}
+
+export async function fetchConversationDetails(id: string): Promise<DBConversation> {
+  const response = await authFetch(`${API_BASE_URL}/ai/conversations/${id}`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to fetch conversation details");
+  }
+  return response.json();
+}
+
+export async function createConversation(title?: string): Promise<DBConversation> {
+  const response = await authFetch(`${API_BASE_URL}/ai/conversations`, {
+    method: "POST",
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to create conversation");
+  }
+  return response.json();
+}
+
+export async function renameConversation(id: string, title: string): Promise<DBConversation> {
+  const response = await authFetch(`${API_BASE_URL}/ai/conversations/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to rename conversation");
+  }
+  return response.json();
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/ai/conversations/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to delete conversation");
+  }
+}
+
+export async function exportResponseDirect(type: 'docx' | 'pdf', content: string, title: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/export/${type}/direct`, {
+    method: "POST",
+    body: JSON.stringify({ content, title }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to export response as ${type.toUpperCase()}`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = `${title.replace(/\s+/g, '_')}.${type}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}

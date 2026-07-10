@@ -9,6 +9,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
+const configuration_1 = require("./config/configuration");
+const logger_middleware_1 = require("./middleware/logger.middleware");
 const typeorm_1 = require("@nestjs/typeorm");
 const auth_module_1 = require("./auth/auth.module");
 const users_module_1 = require("./users/users.module");
@@ -16,15 +18,19 @@ const files_module_1 = require("./files/files.module");
 const ai_module_1 = require("./ai/ai.module");
 const drafts_module_1 = require("./drafts/drafts.module");
 const templates_module_1 = require("./templates/templates.module");
-const versions_module_1 = require("./versions/versions.module");
+const versions_module_1 = require("./drafts/versions/versions.module");
 const audit_module_1 = require("./audit/audit.module");
-const locks_module_1 = require("./locks/locks.module");
-const export_module_1 = require("./export/export.module");
-const document_processing_module_1 = require("./document-processing/document-processing.module");
+const locks_module_1 = require("./drafts/locks/locks.module");
+const export_module_1 = require("./drafts/export/export.module");
+const document_processing_module_1 = require("./files/document-processing/document-processing.module");
 const rag_module_1 = require("./rag/rag.module");
 const websocket_module_1 = require("./websocket/websocket.module");
 const health_controller_1 = require("./health.controller");
+const data_source_1 = require("./database/data-source");
 let AppModule = class AppModule {
+    configure(consumer) {
+        consumer.apply(logger_middleware_1.LoggerMiddleware).forRoutes('*');
+    }
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
@@ -33,16 +39,11 @@ exports.AppModule = AppModule = __decorate([
             config_1.ConfigModule.forRoot({
                 isGlobal: true,
                 envFilePath: ['.env', 'ai.env'],
+                load: [configuration_1.default],
             }),
             typeorm_1.TypeOrmModule.forRoot({
-                type: 'postgres',
-                url: process.env.DATABASE_URL || 'postgresql://legaldraft:legaldraft_password@localhost:5432/legaldraft_ai',
+                ...data_source_1.dataSourceOptions,
                 autoLoadEntities: true,
-                synchronize: process.env.NODE_ENV !== 'production',
-                logging: process.env.NODE_ENV !== 'production' ? ['error'] : false,
-                ssl: (process.env.DATABASE_URL || '').includes('neon.tech')
-                    ? { rejectUnauthorized: false }
-                    : undefined,
             }),
             auth_module_1.AuthModule,
             users_module_1.UsersModule,

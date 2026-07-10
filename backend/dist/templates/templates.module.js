@@ -5,9 +5,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
-var __metadata = (this && this.__metadata) || function (k, v) {
-    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TemplatesModule = void 0;
 const common_1 = require("@nestjs/common");
@@ -15,22 +12,20 @@ const typeorm_1 = require("@nestjs/typeorm");
 const templates_controller_1 = require("./templates.controller");
 const templates_service_1 = require("./templates.service");
 const template_entity_1 = require("./entities/template.entity");
+const template_version_entity_1 = require("./entities/template-version.entity");
+const files_module_1 = require("../files/files.module");
 let TemplatesModule = class TemplatesModule {
-    constructor(templatesService) {
-        this.templatesService = templatesService;
-    }
-    async onModuleInit() {
-        await this.templatesService.seedSystemTemplates();
-    }
 };
 exports.TemplatesModule = TemplatesModule;
 exports.TemplatesModule = TemplatesModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([template_entity_1.Template])],
+        imports: [
+            typeorm_1.TypeOrmModule.forFeature([template_entity_1.Template, template_version_entity_1.TemplateVersion]),
+            files_module_1.FilesModule,
+        ],
         controllers: [templates_controller_1.TemplatesController],
         providers: [templates_service_1.TemplatesService],
         exports: [templates_service_1.TemplatesService],
-    }),
-    __metadata("design:paramtypes", [templates_service_1.TemplatesService])
+    })
 ], TemplatesModule);
 //# sourceMappingURL=templates.module.js.map

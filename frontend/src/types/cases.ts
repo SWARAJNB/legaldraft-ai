@@ -3,19 +3,25 @@
 import { TemplateCategory } from "./templates";
 
 export type CaseStatus = "active" | "pending" | "closed";
+export type CasePriority = "high" | "medium" | "low";
 
 export interface Case {
   id: string;
   caseNumber: string;
+  title: string;
   clientName: string;
   clientEmail: string;
+  clientId: string;
   status: CaseStatus;
+  priority: CasePriority;
   category: TemplateCategory;
   assignedLawyer: string;
   court: string;
+  judge?: string;
   filingDate: string;
   nextHearing: string;
   relatedDrafts: string[];
+  relatedFiles?: string[];
   description: string;
   timeline: TimelineEvent[];
 }

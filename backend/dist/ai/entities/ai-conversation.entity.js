@@ -19,6 +19,10 @@ __decorate([
     __metadata("design:type", String)
 ], AiConversation.prototype, "id", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'title', type: 'varchar', length: 255, nullable: true }),
+    __metadata("design:type", String)
+], AiConversation.prototype, "title", void 0);
+__decorate([
     (0, typeorm_1.Column)({ name: 'user_id', type: 'uuid' }),
     __metadata("design:type", String)
 ], AiConversation.prototype, "userId", void 0);

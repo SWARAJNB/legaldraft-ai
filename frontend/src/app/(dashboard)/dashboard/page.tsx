@@ -16,6 +16,8 @@ import {
   Search,
   Clock,
   AlertCircle,
+  Users,
+  Scale,
 } from "lucide-react";
 import {
   Card,
@@ -48,7 +50,7 @@ import {
 } from "@/lib/mock-data";
 import { useDrafts } from "@/context/drafts/DraftsContext";
 import { useAuth } from "@/context/auth/AuthContext";
-import { WS_BASE_URL } from "@/lib/api";
+import { WS_BASE_URL, fetchDashboardStats, fetchWorkspaces, provisionWorkspace } from "@/lib/api";
 import { toast } from "sonner";
 import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
 
@@ -117,6 +119,18 @@ const activityTypeConfig = {
   archived: { color: "text-gray-500", bg: "bg-gray-100" },
 };
 
+const STATUS_COLORS = {
+  active: "bg-emerald-55 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400",
+  pending: "bg-amber-55 border-amber-200 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400",
+  closed: "bg-gray-100 border-gray-200 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400",
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  high: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400",
+  medium: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400",
+  low: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400",
+};
+
 const CHART_COLORS = {
   criminal: "#EF4444",
   civil: "#3B82F6",
@@ -132,7 +146,69 @@ export default function DashboardPage() {
 
   const totalDraftsCount = drafts.length;
   const inProgressCount = drafts.filter((d) => d.status === "in-progress").length;
-  const finalizedCount = drafts.filter((d) => d.status === "finalized").length;
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+
+  // Initialize and listen to active workspace changes
+  useEffect(() => {
+    async function initWorkspace() {
+      try {
+        const stored = localStorage.getItem("legaldraft_active_workspace");
+        if (stored) {
+          setActiveWorkspaceId(stored);
+          return;
+        }
+
+        // Fetch from backend
+        let list = await fetchWorkspaces();
+        if (list.length === 0) {
+          // Auto-provision a default workspace
+          const ws = await provisionWorkspace({
+            organization_name: "My Law Firm",
+            organization_slug: `firm-${Math.floor(1000 + Math.random() * 9000)}`,
+            workspace_name: "Default Workspace",
+            workspace_slug: "default"
+          });
+          list = [ws];
+        }
+
+        const activeId = list[0].id;
+        setActiveWorkspaceId(activeId);
+        localStorage.setItem("legaldraft_active_workspace", activeId);
+      } catch (err) {
+        console.error("Workspace init error on dashboard", err);
+      }
+    }
+    initWorkspace();
+
+    const handler = () => {
+      const stored = localStorage.getItem("legaldraft_active_workspace");
+      if (stored) {
+        setActiveWorkspaceId(stored);
+      }
+    };
+    window.addEventListener("workspace-changed", handler);
+    return () => window.removeEventListener("workspace-changed", handler);
+  }, []);
+
+  // Fetch stats when active workspace is resolved
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+
+    async function loadStats() {
+      setIsLoadingStats(true);
+      try {
+        const data = await fetchDashboardStats(activeWorkspaceId!);
+        setStats(data);
+      } catch (err) {
+        console.error("Failed to load dashboard statistics", err);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    }
+    loadStats();
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -211,9 +287,9 @@ export default function DashboardPage() {
               </h2>
               <p className="text-purple-200 mt-1 text-sm">
                 You have{" "}
-                <span className="text-white font-semibold">{inProgressCount} drafts</span> in
+                <span className="text-white font-semibold">{stats?.total_drafts || 0} drafts</span> in
                 progress and{" "}
-                <span className="text-white font-semibold">3 hearings</span>{" "}
+                <span className="text-white font-semibold">{stats?.upcoming_hearings || 0} hearings</span>{" "}
                 this week.
               </p>
             </div>
@@ -256,22 +332,22 @@ export default function DashboardPage() {
             {[
               {
                 label: "Total Drafts",
-                value: totalDraftsCount,
+                value: stats?.total_drafts || 0,
                 icon: "📄",
               },
               {
                 label: "Active Cases",
-                value: dashboardStats.activeCases,
+                value: stats?.active_cases || 0,
                 icon: "⚖️",
               },
               {
-                label: "Team Members",
-                value: dashboardStats.totalUsers,
+                label: "Active Clients",
+                value: stats?.active_clients || 0,
                 icon: "👥",
               },
               {
-                label: "This Month",
-                value: `${dashboardStats.monthlyExports} exports`,
+                label: "Upcoming Hearings",
+                value: stats?.upcoming_hearings || 0,
                 icon: "📊",
               },
             ].map((m) => (
@@ -291,38 +367,35 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          id="stat-total-drafts"
-          title="Total Drafts"
-          value={totalDraftsCount}
-          subtitle="All time"
-          icon={FileText}
-          trend="+12% from last month"
+          id="stat-active-cases"
+          title="Active Cases"
+          value={stats?.active_cases || 0}
+          subtitle="Disputes under management"
+          icon={Briefcase}
           color="bg-purple-700"
         />
         <StatCard
-          id="stat-in-progress"
-          title="In Progress"
-          value={inProgressCount}
-          subtitle="Active drafts"
-          icon={Clock}
+          id="stat-active-clients"
+          title="Active Clients"
+          value={stats?.active_clients || 0}
+          subtitle="Total active contacts"
+          icon={Users}
           color="bg-blue-600"
         />
         <StatCard
-          id="stat-finalized"
-          title="Finalized"
-          value={finalizedCount}
-          subtitle="Ready to export"
-          icon={CheckCircle2}
-          trend="+5 this week"
+          id="stat-upcoming-hearings"
+          title="Upcoming Hearings"
+          value={stats?.upcoming_hearings || 0}
+          subtitle="Next hearings scheduled"
+          icon={Clock}
           color="bg-emerald-600"
         />
         <StatCard
-          id="stat-exports"
-          title="Monthly Exports"
-          value={dashboardStats.monthlyExports}
-          subtitle="June 2024"
-          icon={Download}
-          trend="+8% from May"
+          id="stat-total-drafts"
+          title="Total Drafts"
+          value={stats?.total_drafts || 0}
+          subtitle="Drafts in workspace"
+          icon={FileText}
           color="bg-orange-500"
         />
       </div>
@@ -503,6 +576,137 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Case Workflows Section */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Case Workflows
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {/* Widget 1: Upcoming Hearings */}
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2 border-b border-border/50">
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                <Scale className="h-3.5 w-3.5 text-purple-600" />
+                Upcoming Hearings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-3 space-y-2">
+              {stats?.upcoming_hearings_list && stats.upcoming_hearings_list.length > 0 ? (
+                stats.upcoming_hearings_list.map((h: any) => (
+                  <div key={h.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 font-mono">
+                        {new Date(h.hearing_date).toLocaleDateString()}
+                      </span>
+                      {h.hearing_time && (
+                        <span className="text-[9px] text-muted-foreground font-mono">{h.hearing_time}</span>
+                      )}
+                    </div>
+                    <p className="text-xs font-medium text-foreground truncate">{h.case_title}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{h.court_name || "Court N/A"}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
+                  No upcoming hearings
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Widget 2: Pending Tasks */}
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2 border-b border-border/50">
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-purple-600" />
+                Pending Tasks
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-3 space-y-2">
+              {stats?.pending_tasks_list && stats.pending_tasks_list.length > 0 ? (
+                stats.pending_tasks_list.map((t: any) => (
+                  <div key={t.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <p className="text-xs font-semibold text-foreground truncate flex-1">{t.title}</p>
+                      <Badge variant="outline" className={cn("text-[8px] px-1 py-0 capitalize", PRIORITY_COLORS[t.priority])}>
+                        {t.priority}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                      <span className="truncate max-w-[100px]">{t.case_title}</span>
+                      {t.due_date && <span className="font-mono">Due: {new Date(t.due_date).toLocaleDateString()}</span>}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
+                  No pending tasks
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Widget 3: Recent Activities */}
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2 border-b border-border/50">
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-purple-600" />
+                Recent Activities
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-3 space-y-2">
+              {stats?.recent_activities_list && stats.recent_activities_list.length > 0 ? (
+                stats.recent_activities_list.map((act: any) => (
+                  <div key={act.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                      <span className="font-semibold text-foreground truncate">{act.user_name}</span>
+                      <span>{new Date(act.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <p className="text-[10px] text-foreground font-medium leading-normal">{act.details || act.action}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
+                  No recent activities
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Widget 4: Recently Updated Cases */}
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2 border-b border-border/50">
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                <Briefcase className="h-3.5 w-3.5 text-purple-600" />
+                Recently Updated Cases
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-3 space-y-2">
+              {stats?.recently_updated_cases_list && stats.recently_updated_cases_list.length > 0 ? (
+                stats.recently_updated_cases_list.map((c: any) => (
+                  <div key={c.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-xs font-semibold text-foreground truncate flex-1">{c.title}</p>
+                      <Badge variant="outline" className={cn("text-[8px] px-1 py-0 capitalize", (STATUS_COLORS as any)[c.status] || STATUS_COLORS.active)}>
+                        {c.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                      <span className="truncate max-w-[100px]">{c.court}</span>
+                      <span>{new Date(c.updated_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
+                  No cases updated recently
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       {/* Quick Actions + Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Quick Actions */}
@@ -575,82 +779,155 @@ export default function DashboardPage() {
             ))}
           </CardContent>
         </Card>
-
-        {/* Recent Activity */}
+        {/* Recent Workspace Updates */}
         <Card className="lg:col-span-2">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 border-b border-border/50">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <CardTitle className="text-base">Recent Activity</CardTitle>
-                <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className={cn(
-                      "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                      wsStatus === "connected" ? "bg-emerald-400" : wsStatus === "connecting" ? "bg-amber-400" : "bg-red-400"
-                    )}></span>
-                    <span className={cn(
-                      "relative inline-flex rounded-full h-1.5 w-1.5",
-                      wsStatus === "connected" ? "bg-emerald-500" : wsStatus === "connecting" ? "bg-amber-500" : "bg-red-500"
-                    )}></span>
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">
-                    {wsStatus === "connected" ? "Syncing Live" : wsStatus === "connecting" ? "Connecting..." : "Offline"}
-                  </span>
-                </div>
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-purple-600" />
+                  Recent Workspace Updates
+                </CardTitle>
+                <CardDescription>Live feed of drafts, cases, clients and documents</CardDescription>
               </div>
-              <Link href="/audit-logs">
-                <Button variant="ghost" size="sm" className="text-xs h-7">
-                  View all
-                  <ArrowUpRight className="h-3 w-3 ml-1" />
-                </Button>
-              </Link>
+              <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className={cn(
+                    "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                    wsStatus === "connected" ? "bg-emerald-400" : wsStatus === "connecting" ? "bg-amber-400" : "bg-red-400"
+                  )}></span>
+                  <span className={cn(
+                    "relative inline-flex rounded-full h-1.5 w-1.5",
+                    wsStatus === "connected" ? "bg-emerald-500" : wsStatus === "connecting" ? "bg-amber-500" : "bg-red-500"
+                  )}></span>
+                </span>
+                <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">
+                  {wsStatus === "connected" ? "Syncing Live" : wsStatus === "connecting" ? "Connecting..." : "Offline"}
+                </span>
+              </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3" id="recent-activity-list">
-              {activities.map((activity) => {
-                const config =
-                  activityTypeConfig[
-                    activity.type as keyof typeof activityTypeConfig
-                  ] || activityTypeConfig.updated;
-                return (
-                  <div
-                    key={activity.id}
-                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <Avatar className="h-8 w-8 flex-shrink-0">
-                      <AvatarFallback className="text-xs">
-                        {getInitials(activity.user)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground">
-                        <span className="font-semibold">{activity.user}</span>{" "}
-                        <span
-                          className={cn("font-medium text-xs", config.color)}
-                        >
-                          {activity.action}
-                        </span>{" "}
-                        <span className="text-muted-foreground">
-                          {activity.resource}
-                        </span>
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {activity.time}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        "text-xs px-2 py-0.5 rounded-full font-medium capitalize",
-                        config.bg,
-                        config.color
-                      )}
-                    >
-                      {activity.type}
-                    </span>
+          <CardContent className="pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Recent Drafts */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-purple-600" />
+                  Recent Drafts
+                </h4>
+                {stats?.recent_drafts?.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.recent_drafts.map((draft: any) => (
+                      <div key={draft.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-1 hover:border-purple-200 dark:hover:border-purple-900 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium truncate text-foreground">{draft.title}</p>
+                          <Badge variant="outline" className="text-[9px] font-mono capitalize px-1 py-0 flex-shrink-0">
+                            Draft
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="truncate max-w-[100px]">{draft.client_name || "General Client"}</span>
+                          <span>{new Date(draft.updated_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
+                ) : (
+                  <div className="text-center py-8 text-xs text-muted-foreground border border-dashed rounded-lg">
+                    No drafts found.
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Documents */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Upload className="h-3.5 w-3.5 text-purple-600" />
+                  Recent Documents
+                </h4>
+                {stats?.recent_documents?.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.recent_documents.map((doc: any) => (
+                      <div key={doc.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-1 hover:border-purple-200 dark:hover:border-purple-900 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium truncate text-foreground">{doc.name}</p>
+                          <Badge variant="outline" className="text-[9px] font-mono uppercase px-1 py-0 flex-shrink-0">
+                            {doc.mime_type.split("/")[1] || "File"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="truncate max-w-[100px]">{doc.case_title || "Unlinked Case"}</span>
+                          <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-xs text-muted-foreground border border-dashed rounded-lg">
+                    No documents uploaded.
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Clients */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-purple-600" />
+                  Recent Clients
+                </h4>
+                {stats?.recent_clients?.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.recent_clients.map((client: any) => (
+                      <div key={client.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-1 hover:border-purple-200 dark:hover:border-purple-900 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium truncate text-foreground">{client.full_name}</p>
+                          <Badge variant="outline" className="text-[9px] font-mono capitalize px-1 py-0 flex-shrink-0">
+                            Client
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="truncate max-w-[120px]">{client.company || client.email || "No company"}</span>
+                          <span>{new Date(client.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-xs text-muted-foreground border border-dashed rounded-lg">
+                    No clients found.
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Cases */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Briefcase className="h-3.5 w-3.5 text-purple-600" />
+                  Recent Cases
+                </h4>
+                {stats?.recent_cases?.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.recent_cases.map((cs: any) => (
+                      <div key={cs.id} className="p-2.5 rounded-lg border border-border bg-muted/10 flex flex-col gap-1 hover:border-purple-200 dark:hover:border-purple-900 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium truncate text-foreground">{cs.title || cs.case_number}</p>
+                          <Badge variant="outline" className="text-[9px] font-mono capitalize px-1 py-0 flex-shrink-0">
+                            Case
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="truncate max-w-[120px]">{cs.client_name || "General Case"}</span>
+                          <span>{new Date(cs.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-xs text-muted-foreground border border-dashed rounded-lg">
+                    No cases found.
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

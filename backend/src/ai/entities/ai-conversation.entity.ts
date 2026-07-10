@@ -11,6 +11,9 @@ export class AiConversation {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ name: 'title', type: 'varchar', length: 255, nullable: true })
+  title: string;
+
   @Column({ name: 'user_id', type: 'uuid' })
   userId: string;
 

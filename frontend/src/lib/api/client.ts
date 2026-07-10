@@ -52,3 +52,31 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
 
   return response;
 }
+
+export const PYTHON_API_BASE_URL = process.env.NEXT_PUBLIC_PYTHON_API_URL || (typeof window !== "undefined"
+  ? (window.location.hostname === "localhost" ? "http://localhost:8082/api/v1" : `${window.location.protocol}//${window.location.hostname}:8082/api/v1`)
+  : "http://localhost:8082/api/v1");
+
+export async function pythonFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> || {}),
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const separator = path.startsWith("/") ? "" : "/";
+  const url = `${PYTHON_API_BASE_URL}${separator}${path}`;
+
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) {
+    removeStoredToken();
+    localStorage.removeItem("legaldraft_session");
+  }
+
+  return response;
+}

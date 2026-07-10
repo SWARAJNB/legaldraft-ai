@@ -1,0 +1,28 @@
+import uuid
+from datetime import datetime
+from sqlalchemy import func, DateTime
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import UUID
+
+class Base(DeclarativeBase):
+    pass
+
+class BaseModel(Base):
+    __abstract__ = True
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), server_default=func.now(), onupdate=func.now(), server_onupdate=func.now()
+    )
+    is_active: Mapped[bool] = mapped_column(default=True)
+    # Soft delete ready
+    is_deleted: Mapped[bool] = mapped_column(default=False)
+
+# Register models for Alembic autogenerate metadata discovery via env.py instead
+
+

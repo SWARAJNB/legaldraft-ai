@@ -1,5 +1,6 @@
 export declare class AiConversation {
     id: string;
+    title: string;
     userId: string;
     tenantId: string;
     sessionType: string;

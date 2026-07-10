@@ -1,11 +1,24 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { Case, TimelineEvent, CaseStatus, TemplateCategory } from "@/types";
-import { mockCases } from "@/lib/mock-data";
+import { toast } from "sonner";
+import {
+  fetchCases,
+  createCase as apiCreateCase,
+  updateCase as apiUpdateCase,
+  deleteCase as apiDeleteCase,
+  addTimelineEvent as apiAddTimelineEvent,
+  linkDraftToCase as apiLinkDraftToCase,
+  fetchClients,
+  createClient,
+  fetchWorkspaces,
+  provisionWorkspace
+} from "@/lib/api";
 
 interface CasesContextType {
   cases: Case[];
+  isLoading: boolean;
   createCase: (caseData: {
     clientName: string;
     clientEmail: string;
@@ -16,46 +29,85 @@ interface CasesContextType {
     filingDate: string;
     nextHearing: string;
     description: string;
-  }) => Case;
-  updateCase: (id: string, updates: Partial<Case>) => void;
-  deleteCase: (id: string) => void;
+  }) => Promise<Case>;
+  updateCase: (id: string, updates: Partial<Case>) => Promise<void>;
+  deleteCase: (id: string) => Promise<void>;
   getCase: (id: string) => Case | undefined;
   addTimelineEvent: (caseId: string, event: {
     title: string;
     description: string;
     date: string;
     type: "filing" | "hearing" | "draft" | "order" | "appeal" | "milestone";
-  }) => TimelineEvent;
-  linkDraftToCase: (caseId: string, draftId: string) => void;
+  }) => Promise<TimelineEvent>;
+  linkDraftToCase: (caseId: string, draftId: string) => Promise<void>;
 }
 
 const CasesContext = createContext<CasesContextType | undefined>(undefined);
 
 export function CasesProvider({ children }: { children: React.ReactNode }) {
   const [cases, setCases] = useState<Case[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const savedCases = localStorage.getItem("legaldraft_cases");
-    if (savedCases) {
-      try {
-        setCases(JSON.parse(savedCases));
-      } catch (e) {
-        setCases(mockCases);
-      }
-    } else {
-      setCases(mockCases);
-      localStorage.setItem("legaldraft_cases", JSON.stringify(mockCases));
+  const loadData = useCallback(async (workspaceId: string) => {
+    setIsLoading(true);
+    try {
+      const data = await fetchCases(workspaceId);
+      setCases(data);
+    } catch (err) {
+      console.error("Failed to load cases", err);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoaded(true);
   }, []);
 
-  const saveToStorage = (newCases: Case[]) => {
-    setCases(newCases);
-    localStorage.setItem("legaldraft_cases", JSON.stringify(newCases));
-  };
+  // Fetch workspaces & initialize active workspace
+  useEffect(() => {
+    async function initWorkspace() {
+      try {
+        const stored = localStorage.getItem("legaldraft_active_workspace");
+        if (stored) {
+          setActiveWorkspaceId(stored);
+          await loadData(stored);
+          return;
+        }
 
-  const createCase = (caseData: {
+        // Fetch workspaces
+        let list = await fetchWorkspaces();
+        if (list.length === 0) {
+          const ws = await provisionWorkspace({
+            organization_name: "My Law Firm",
+            organization_slug: `firm-${Math.floor(1000 + Math.random() * 9000)}`,
+            workspace_name: "Default Workspace",
+            workspace_slug: "default"
+          });
+          list = [ws];
+        }
+
+        const activeId = list[0].id;
+        setActiveWorkspaceId(activeId);
+        localStorage.setItem("legaldraft_active_workspace", activeId);
+        await loadData(activeId);
+      } catch (err) {
+        console.error("Workspace init error in CasesContext", err);
+        setIsLoading(false);
+      }
+    }
+    initWorkspace();
+
+    // Listen for workspace switches
+    const handler = () => {
+      const stored = localStorage.getItem("legaldraft_active_workspace");
+      if (stored) {
+        setActiveWorkspaceId(stored);
+        loadData(stored);
+      }
+    };
+    window.addEventListener("workspace-changed", handler);
+    return () => window.removeEventListener("workspace-changed", handler);
+  }, [loadData]);
+
+  const createCase = async (caseData: {
     clientName: string;
     clientEmail: string;
     status: CaseStatus;
@@ -66,95 +118,106 @@ export function CasesProvider({ children }: { children: React.ReactNode }) {
     nextHearing: string;
     description: string;
   }) => {
-    const newId = `c_${Date.now()}`;
-    const caseNumber = `CAS-2024-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newObj: Case = {
-      ...caseData,
-      id: newId,
-      caseNumber,
-      relatedDrafts: [],
-      timeline: [
-        {
-          id: `tl_${Date.now()}`,
-          date: caseData.filingDate || new Date().toISOString(),
-          title: "Case Registered",
-          description: `Case registered in database at ${caseData.court || "court"}.`,
-          type: "filing"
-        }
-      ]
-    };
+    if (!activeWorkspaceId) {
+      throw new Error("No active workspace selected");
+    }
 
-    const updated = [newObj, ...cases];
-    saveToStorage(updated);
-    return newObj;
+    // Resolve or auto-create client in the database
+    let clientsList = await fetchClients(activeWorkspaceId);
+    let client = clientsList.find(c =>
+      c.email === caseData.clientEmail ||
+      c.full_name.toLowerCase() === caseData.clientName.toLowerCase()
+    );
+
+    if (!client) {
+      client = await createClient(activeWorkspaceId, {
+        full_name: caseData.clientName,
+        email: caseData.clientEmail || undefined,
+        notes: "Auto-created from Case registration."
+      });
+    }
+
+    const caseNumber = `CAS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newCase = await apiCreateCase(activeWorkspaceId, {
+      case_number: caseNumber,
+      title: `${caseData.clientName} - Case`,
+      case_type: caseData.category,
+      court: caseData.court,
+      judge: "Hon. Judge",  // Default or placeholder judge
+      status: caseData.status,
+      filing_date: caseData.filingDate,
+      hearing_date: caseData.nextHearing,
+      description: caseData.description,
+      client_id: client.id
+    });
+
+    setCases((prev) => [newCase, ...prev]);
+    toast.success("Case created and saved to database");
+    return newCase;
   };
 
   const getCase = (id: string) => {
     return cases.find((c) => c.id === id);
   };
 
-  const updateCase = (id: string, updates: Partial<Case>) => {
-    const updatedCases = cases.map((c) => {
-      if (c.id === id) {
-        return {
-          ...c,
-          ...updates,
-        };
-      }
-      return c;
-    });
-    saveToStorage(updatedCases);
+  const updateCase = async (id: string, updates: Partial<Case>) => {
+    try {
+      const updatedCase = await apiUpdateCase(id, updates);
+      setCases((prev) => prev.map((c) => (c.id === id ? updatedCase : c)));
+      toast.success("Case updated in database");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update case");
+      throw err;
+    }
   };
 
-  const deleteCase = (id: string) => {
-    const updatedCases = cases.filter((c) => c.id !== id);
-    saveToStorage(updatedCases);
+  const deleteCase = async (id: string) => {
+    try {
+      await apiDeleteCase(id);
+      setCases((prev) => prev.filter((c) => c.id !== id));
+      toast.success("Case deleted from database");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete case");
+      throw err;
+    }
   };
 
-  const addTimelineEvent = (caseId: string, event: {
+  const addTimelineEvent = async (caseId: string, event: {
     title: string;
     description: string;
     date: string;
     type: "filing" | "hearing" | "draft" | "order" | "appeal" | "milestone";
   }) => {
-    const newEvent: TimelineEvent = {
-      id: `tl_${Date.now()}`,
-      ...event
-    };
+    try {
+      const updatedCase = await apiAddTimelineEvent(caseId, event);
+      setCases((prev) => prev.map((c) => (c.id === caseId ? updatedCase : c)));
+      toast.success("Timeline event added");
 
-    const updatedCases = cases.map((c) => {
-      if (c.id === caseId) {
-        return {
-          ...c,
-          timeline: [newEvent, ...c.timeline].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        };
-      }
-      return c;
-    });
-
-    saveToStorage(updatedCases);
-    return newEvent;
+      // Return the newly created event from the end of the timeline list
+      const sorted = [...updatedCase.timeline].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return sorted[0];
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add event");
+      throw err;
+    }
   };
 
-  const linkDraftToCase = (caseId: string, draftId: string) => {
-    const updatedCases = cases.map((c) => {
-      if (c.id === caseId) {
-        if (!c.relatedDrafts.includes(draftId)) {
-          return {
-            ...c,
-            relatedDrafts: [...c.relatedDrafts, draftId]
-          };
-        }
-      }
-      return c;
-    });
-    saveToStorage(updatedCases);
+  const linkDraftToCase = async (caseId: string, draftId: string) => {
+    try {
+      const updatedCase = await apiLinkDraftToCase(caseId, draftId);
+      setCases((prev) => prev.map((c) => (c.id === caseId ? updatedCase : c)));
+      toast.success("Draft linked to case");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to link draft");
+      throw err;
+    }
   };
 
   return (
     <CasesContext.Provider
       value={{
         cases,
+        isLoading,
         createCase,
         updateCase,
         deleteCase,
