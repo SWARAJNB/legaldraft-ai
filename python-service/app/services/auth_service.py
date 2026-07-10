@@ -1,3 +1,26 @@
+"""
+══════════════════════════════════════════════════════════════════════════════
+ DEPRECATED — Authentication is handled by NestJS.
+══════════════════════════════════════════════════════════════════════════════
+
+ This service is NO LONGER used in production.
+
+ NestJS is the single source of truth for authentication.
+ Python NEVER creates authentication tokens.
+ Python only verifies JWTs issued by NestJS via app.core.security.
+
+ This file is retained for:
+   • Backward compatibility
+   • Local development testing
+   • Reference for the original authentication flow
+
+ See also:
+   • app/core/security.py — JWT verification module (replaces this service)
+   • app/api/deps.py — Authentication dependency (get_current_user)
+
+══════════════════════════════════════════════════════════════════════════════
+"""
+
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import HTTPException, status

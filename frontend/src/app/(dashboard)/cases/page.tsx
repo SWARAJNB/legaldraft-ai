@@ -1700,7 +1700,7 @@ export default function CasesPage() {
                   required
                 >
                   <option value="">-- Choose Draft --</option>
-                  {drafts.filter(d => !selectedCase.relatedDrafts?.includes(d.id)).map(d => (
+                  {drafts.filter(d => !selectedCase?.relatedDrafts?.includes(d.id)).map(d => (
                     <option key={d.id} value={d.id}>{d.title}</option>
                   ))}
                 </select>

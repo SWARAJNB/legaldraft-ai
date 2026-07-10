@@ -1,3 +1,29 @@
+"""
+══════════════════════════════════════════════════════════════════════════════
+ DEPRECATED — Authentication is handled by NestJS.
+══════════════════════════════════════════════════════════════════════════════
+
+ This router is NO LONGER registered in main.py.
+
+ NestJS is the single source of truth for authentication.
+ Python verifies NestJS JWTs via app.core.security.
+
+ This file is retained for:
+   • Backward compatibility
+   • Local development testing
+   • Reference for the original authentication flow
+
+ To re-enable for local testing, add to main.py:
+   from app.api.v1.auth import router as auth_router
+   app.include_router(auth_router, prefix="/api/v1")
+
+ See also:
+   • app/core/security.py — JWT verification module
+   • app/api/deps.py — Authentication dependency (get_current_user)
+
+══════════════════════════════════════════════════════════════════════════════
+"""
+
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm

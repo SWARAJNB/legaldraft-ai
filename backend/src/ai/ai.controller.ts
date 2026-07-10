@@ -313,12 +313,14 @@ export class AiController {
     @CurrentUser() user: { id: string },
     @Headers('x-tenant-id') tenantId: string,
   ): Promise<Observable<MessageEvent>> {
+    this.logger.log('[AI] Request received');
     const conv = await this.conversationsRepo.findOne({
       where: { id, userId: user.id },
     });
     if (!conv) {
       throw new HttpException('Conversation not found', HttpStatus.NOT_FOUND);
     }
+    this.logger.log('[AI] Conversation loaded');
 
     // Append user message
     const userMsg = {

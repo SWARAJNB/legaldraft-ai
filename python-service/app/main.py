@@ -5,7 +5,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from app.api.v1.auth import router as auth_router
+# Authentication is handled exclusively by NestJS.
+# Python auth router has been deprecated and is no longer registered.
+# See: app/api/v1/auth.py (deprecated), app/core/security.py (JWT verification)
 from app.api.v1.workspace import router as workspace_router
 from app.api.v1.client import router as client_router
 from app.api.v1.case import router as case_router
@@ -67,7 +69,8 @@ def generic_exception_handler(request: Request, exc: Exception):
     )
 
 # Include v1 API routers
-app.include_router(auth_router, prefix="/api/v1")
+# NOTE: auth_router is NOT registered. Authentication is handled by NestJS.
+# Python verifies NestJS JWTs via app.core.security — see app/api/deps.py
 app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(client_router, prefix="/api/v1")
 app.include_router(case_router, prefix="/api/v1")
